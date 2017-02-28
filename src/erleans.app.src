@@ -1,0 +1,23 @@
+{application, erleans,
+ [{description, "Erleans: Like Orleans but Erlang"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, { erleans_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    lager,
+    sasl,
+    uuid,
+    lasp,
+    lasp_pg
+   ]},
+  {modules, []},
+  {env, [{default_lease_time, 2700000}, %% 45 minutes
+         {default_life_time, 0},
+         {default_eval_interval, 60}]},
+
+  {maintainers, ["Tristan Sloughter"]},
+  {licenses, ["Apache 2"]},
+  {links, ["https://github.com/gofactory/erleans"]}
+ ]}.
