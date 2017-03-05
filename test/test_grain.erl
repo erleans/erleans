@@ -9,7 +9,7 @@
 
 -behaviour(erleans_grain).
 
--export([grain_type/0,
+-export([placement/0,
          provider/0,
          node/1,
          deactivated_counter/1,
@@ -26,8 +26,8 @@
 
 -include("erleans.hrl").
 
-grain_type() ->
-    single_activation.
+placement() ->
+    prefer_local.
 
 provider() ->
     ets_provider.
@@ -42,9 +42,9 @@ node(Ref) ->
     erleans_grain:call(Ref, node).
 
 init(State=#{activated_counter := Counter}) ->
-    {ok, State#{activated_counter => Counter+1}, #{}};
+    {ok, State#{activated_counter => Counter+1}, #{life_time => infinity}};
 init(State=#{}) ->
-    {ok, State#{activated_counter => 1}, #{}}.
+    {ok, State#{activated_counter => 1}, #{life_time => infinity}}.
 
 handle_call(node, _From, State) ->
     {reply, {ok, node()}, State};

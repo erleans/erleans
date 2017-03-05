@@ -42,6 +42,11 @@
 
 -callback provider() -> module().
 
+-callback placement() -> erleans:grain_placement().
+
+-optional_callbacks([provider/0,
+                     placement/0]).
+
 -callback handle_call(Msg :: term(), From :: pid(), CbState :: cb_state()) ->
     {reply, Reply :: term(), CbState :: cb_state()} |
     {stop, Reply :: term(), Reason :: term()}.
@@ -76,7 +81,6 @@
          change_id   :: integer(),
          provider    :: term(),
          ref         :: erleans:grain_ref(),
-         grain_type  :: erleans:grain_type(),
          tref        :: reference(),
          create_time :: non_neg_integer(),
          lease_time  :: non_neg_integer() | infinity,
@@ -85,7 +89,6 @@
        }).
 
 %% -type grain_opts() :: #{ref         := binary(),
-%%                         grain_type  := erleans:grain_type(),
 %%                         change_id   := integer(),
 
 %%                         lease_time => non_neg_integer() | infinity,
@@ -115,7 +118,7 @@ do_for_ref(GrainRef, Fun) ->
             Fun(Pid);
         undefined ->
             lager:info("start=~p", [GrainRef]),
-            case erleans_grain_sup:start_child(GrainRef) of
+            case activate_grain(GrainRef) of
                 {ok, Pid} ->
                     Fun(Pid);
                 _ ->
@@ -123,10 +126,45 @@ do_for_ref(GrainRef, Fun) ->
             end
     end.
 
-init([GrainRef=#{id         := Id,
-                 grain_type := CbModule}]) ->
+activate_grain(GrainRef=#{implementing_module := CbModule}) ->
+    Placement = case erlang:function_exported(CbModule, placement, 0) of
+                    false ->
+                        erleans_config:get(placement);
+                    true ->
+                        CbModule:placement()
+                end,
+    case Placement of
+        {stateless, N} ->
+            activate_stateless(GrainRef, N);
+        stateless ->
+            activate_stateless(GrainRef, erleans_config:get(max_stateless));
+        prefer_local ->
+            activate_local(GrainRef);
+        random ->
+            activate_random(GrainRef)
+        %% load ->
+        %%  load placement
+    end.
+
+%% Stateless are always activated on the local node if <N exist already on the node
+activate_stateless(GrainRef, _N) ->
+    erleans_grain_sup:start_child(node(), GrainRef).
+
+%% Activate on the local node
+activate_local(GrainRef) ->
+    erleans_grain_sup:start_child(node(), GrainRef).
+
+%% Activate the grain on a random node in the cluster
+activate_random(GrainRef) ->
+    {ok, Members} = partisan_peer_service:members(),
+    Size = erlang:length(Members),
+    Nth = rand:uniform(Size),
+    Node = lists:nth(Nth, Members),
+    erleans_grain_sup:start_child(Node, GrainRef).
+
+init([GrainRef=#{id := Id,
+                 implementing_module := CbModule}]) ->
     process_flag(trap_exit, true),
-    GrainOpts = #{},
     CbState = case maps:find(provider, GrainRef) of
                   {ok, Provider} ->
                       case Provider:read(Id) of
@@ -145,29 +183,26 @@ init([GrainRef=#{id         := Id,
         notfound ->
             {stop, notfound};
         _ ->
-            {CbState2, GrainOpts2} =
-                case erlang:function_exported(CbModule, init, 1) of
-                    false ->
-                        {#{}, GrainOpts};
-                    true ->
-                        {ok, CbState1, GrainOpts1} = CbModule:init(CbState),
-                        %% new options take precedence over options read from storage
-                        {CbState1, maps:merge(GrainOpts1, GrainOpts)}
-                end,
+            case erlang:function_exported(CbModule, init, 1) of
+                false ->
+                    CbState1 = CbState,
+                    GrainOpts = #{};
+                true ->
+                    {ok, CbState1, GrainOpts} = CbModule:init(CbState)
+            end,
 
-            ChangeId = maps:get(change_id, GrainOpts2, 0),
-            CreateTime = maps:get(create_time, GrainOpts2, erlang:system_time(seconds)),
-            LeaseTime = maps:get(lease_time, GrainOpts2, erleans_config:get(default_lease_time)),
-            LifeTime = maps:get(life_time, GrainOpts2, erleans_config:get(default_life_time)),
-            EvalTimeoutInterval = maps:get(eval_timeout_interval, GrainOpts2, erleans_config:get(default_eval_interval)),
+            ChangeId = maps:get(change_id, GrainOpts, 0),
+            CreateTime = maps:get(create_time, GrainOpts, erlang:system_time(seconds)),
+            LeaseTime = maps:get(lease_time, GrainOpts, erleans_config:get(default_lease_time)),
+            LifeTime = maps:get(life_time, GrainOpts, erleans_config:get(default_life_time)),
+            EvalTimeoutInterval = maps:get(eval_timeout_interval, GrainOpts, erleans_config:get(default_eval_interval)),
             TRef = erlang:start_timer(EvalTimeoutInterval, self(), eval_timeout),
             State = #state{cb_module   = CbModule,
-                           cb_state    = CbState2,
+                           cb_state    = CbState1,
 
                            id          = Id,
                            change_id   = ChangeId,
                            provider    = Provider,
-                           %grain_type  = Type,
                            ref         = GrainRef,
                            tref        = TRef,
                            create_time = CreateTime,

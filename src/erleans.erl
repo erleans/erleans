@@ -9,35 +9,48 @@
 
 -export([get_grain/2]).
 
+-include("erleans.hrl").
+
 -type provider() :: module().
 
--opaque grain_ref() :: #{grain_type := atom(),
-                         id := any(),
+-opaque grain_ref() :: #{implementing_module := module(),
+                         id := term(),
+                         placement := placement(),
                          provider => provider()}.
 
--type grain_type() :: single_activation | stateless | {stateless, integer()}.
+-type placement() :: random | prefer_local | stateless | {stateless, integer()}. %% | load
 
 -export_type([grain_ref/0,
-              grain_type/0,
+              placement/0,
               provider/0]).
 
 -spec get_grain(atom(), any()) -> grain_ref().
-get_grain(GrainType, Id) ->
-    case provider(GrainType) of
-        {ok, Provider} ->
-            #{grain_type => GrainType,
-              provider => Provider,
-              id => Id};
+get_grain(ImplementingModule, Id) ->
+    BaseGrainRef =#{implementing_module => ImplementingModule,
+                    placement => placement(ImplementingModule),
+                    id => Id},
+    case provider(ImplementingModule) of
         undefined ->
-            #{grain_type => GrainType,
-              id => Id}
+            BaseGrainRef;
+        Provider ->
+            BaseGrainRef#{provider => Provider}
     end.
 
 -spec provider(module()) -> provider() | undefined.
 provider(Module) ->
-    case erlang:function_exported(Module, provider, 0) of
+    fun_or_default(Module, provider, undefined).
+
+-spec placement(module()) -> placement().
+placement(Module) ->
+    fun_or_default(Module, placement, ?DEFAULT_PLACEMENT).
+
+%% If a function is exported by the module return the result of calling it
+%% else return the default.
+-spec fun_or_default(module(), atom(), term()) -> term().
+fun_or_default(Module, FunctionName, Default) ->
+    case erlang:function_exported(Module, FunctionName, 0) of
         true ->
-            {ok, Module:provider()};
+            Module:FunctionName();
         false ->
-            undefined
+            Default
     end.

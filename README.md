@@ -39,6 +39,8 @@ Grains can subscribe to streams and implement callbacks for handling records as 
 
 No starting or linking, a grain is activated when it is sent a request if a activiation is not currently running.
 
+### Grain Placement
+
 ### Example
 
 The grain implementation `test_grain` is found in `test/`:

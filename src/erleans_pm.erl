@@ -21,21 +21,28 @@ register_name(Name, Pid) when is_pid(Pid) ->
         {ok, _} ->
             %% Set up a callback to be triggered on a single node (lasp handles this)
             %% when the number of pids registered for this name goes above 1
-            EnforceFun = fun(AwSet) -> deactivate(Name, AwSet) end,
+            EnforceFun = fun(AwSet) -> deactivate_dups(Name, AwSet) end,
             lasp:enforce_once({term_to_binary(Name), ?SET}, {cardinality, 2}, EnforceFun),
             yes;
         _ ->
             no
     end.
 
-%% deactivate all but one of the activations for this single activation
-%% needs to be deterministic but shouldn't just stop all but the first in the
-%% sorted list as it does now either.
-deactivate(Name, AwSet) ->
+%% deactivate all but a random activation.
+%% It is possible that this will be triggered multiple times and result in no
+%% remaining activations until the next request to a grain.
+deactivate_dups(Name, AwSet) ->
     Set = state_awset:query(AwSet),
-    [_Keep | Rest] = lists:usort(sets:to_list(Set)),
-    lager:info("at=enforce_once_deactivate name=~p keep=~p rest=~p", [Name, _Keep, Rest]),
-    [supervisor:terminate_child({erleans_grain_sup, node(StopPid)}, StopPid) || StopPid <- Rest].
+    Size = sets:size(Set),
+    Keep = rand:uniform(Size),
+    lager:info("at=deactivate_dups name=~p size=~p keep=~p", [Name, Size, Keep]),
+    sets:fold(fun(_, N) when N =:= Size ->
+                  N+1;
+                 (Pid, N) ->
+                  supervisor:terminate_child({erleans_grain_sup, node(Pid)}, Pid),
+                  N+1
+              end, 1, Set).
+
 
 -spec unregister_name(Name :: term()) -> Name :: term() | fail.
 unregister_name(Name) ->
