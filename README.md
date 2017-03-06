@@ -57,8 +57,8 @@ The grain implementation `test_grain` is found in `test/`:
 
 ...
 
-grain_type() ->
-    single_activation.
+placement() ->
+    prefer_local.
 
 provider() ->
     ets_provider.
