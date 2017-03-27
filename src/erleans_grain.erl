@@ -30,6 +30,8 @@
          terminate/2,
          code_change/3]).
 
+-include("erleans.hrl").
+
 -define(DEFAULT_TIMEOUT, 5000).
 
 -type cb_state() :: term().
@@ -96,12 +98,16 @@
 %%                         eval_timeout_interval => non_neg_integer() | infinity}.
 
 -spec start_link(GrainRef :: erleans:grain_ref()) -> {ok, pid()} | {error, any()}.
+start_link(GrainRef = #{placement := {stateless, _N}}) ->
+    {ok, Pid} = gen_server:start_link(?MODULE, [GrainRef], []),
+    gproc:reg(?stateless_counter(GrainRef)), 
+    gproc:reg_other(?stateless(GrainRef), Pid), 
+    {ok, Pid};
 start_link(GrainRef) ->
     gen_server:start_link({via, erleans_pm, GrainRef}, ?MODULE, [GrainRef], []).
 
 -spec call(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 call(GrainRef, Request) ->
-    lager:info("call=~p", [GrainRef]),
     call(GrainRef, Request, ?DEFAULT_TIMEOUT).
 
 -spec call(GrainRef :: erleans:grain_ref(), Request :: term(), non_neg_integer() | infinity) -> Reply :: term().
@@ -112,6 +118,13 @@ call(GrainRef, Request, Timeout) ->
 cast(GrainRef, Request) ->
     do_for_ref(GrainRef, fun(Pid) -> gen_server:cast(Pid, Request) end).
 
+do_for_ref(GrainRef=#{placement := {stateless, _N}}, Fun) ->
+    case erleans_stateless:pick_grain(GrainRef) of
+        {ok, Pid} when is_pid(Pid) ->
+            Fun(Pid);
+        X ->            
+            exit(timeout)
+    end;
 do_for_ref(GrainRef, Fun) ->
     case erleans_pm:whereis_name(GrainRef) of
         Pid when is_pid(Pid) ->
@@ -126,13 +139,7 @@ do_for_ref(GrainRef, Fun) ->
             end
     end.
 
-activate_grain(GrainRef=#{implementing_module := CbModule}) ->
-    Placement = case erlang:function_exported(CbModule, placement, 0) of
-                    false ->
-                        erleans_config:get(placement);
-                    true ->
-                        CbModule:placement()
-                end,
+activate_grain(GrainRef=#{placement := Placement}) ->
     case Placement of
         {stateless, N} ->
             activate_stateless(GrainRef, N);
@@ -179,6 +186,8 @@ init([GrainRef=#{id := Id,
                       #{}
               end,
 
+    maybe_enqueue_grain(GrainRef),
+    
     case CbState of
         notfound ->
             {stop, notfound};
@@ -223,6 +232,12 @@ handle_cast(Msg, State=#state{cb_module=CbModule,
 handle_info(timeout, State) ->
     %% Lease expired
     finalize_and_stop(State);
+handle_info({erleans_grain_tag, {go, _, _, _, _}}, State) ->
+    %% checked out
+    {noreply, State};
+handle_info({erleans_grain_tag, {drop, _}}, State) ->
+    %% dropped from queue
+    {noreply, State};
 handle_info({timeout, _TRef, eval_timeout}, State=#state{cb_module=CbModule,
                                                          cb_state=CbState,
                                                          eval_timeout_interval=EvalTimeoutInterval,
@@ -282,16 +297,20 @@ finalize_and_stop(State=#state{cb_module=CbModule,
             {stop, normal, State#state{cb_state=NewCbState}}
     end.
 
-handle_reply({stop, Reply, NewCbState}, State) ->
+handle_reply(Reply, State=#state{ref=GrainRef}) ->
+    maybe_enqueue_grain(GrainRef),
+    handle_reply_(Reply, State).
+
+handle_reply_({stop, Reply, NewCbState}, State) ->
     {stop, Reason, NewState} = finalize_and_stop(State#state{cb_state=NewCbState}),
     {stop, Reason, Reply, NewState};
-handle_reply({stop, NewCbState}, State) ->
+handle_reply_({stop, NewCbState}, State) ->
     finalize_and_stop(State#state{cb_state=NewCbState});
-handle_reply({reply, Reply, NewCbState}, State=#state{lease_time=LeaseTime}) ->
+handle_reply_({reply, Reply, NewCbState}, State=#state{lease_time=LeaseTime}) ->
     {reply, Reply, State#state{cb_state=NewCbState}, lease_time(LeaseTime)};
-handle_reply({noreply, NewCbState}, State=#state{lease_time=LeaseTime}) ->
+handle_reply_({noreply, NewCbState}, State=#state{lease_time=LeaseTime}) ->
     {noreply, State#state{cb_state=NewCbState}, lease_time(LeaseTime)};
-handle_reply({save_reply, Reply, Updates, NewCbState}, State=#state{cb_module=CbModule,
+handle_reply_({save_reply, Reply, Updates, NewCbState}, State=#state{cb_module=CbModule,
                                                                     id=Id,
                                                                     lease_time=LeaseTime,
                                                                     provider=Provider,
@@ -304,7 +323,7 @@ handle_reply({save_reply, Reply, Updates, NewCbState}, State=#state{cb_module=Cb
     save_state(Provider, Id, Ref, Updates, NewChangeId, ChangeId),
     {reply, Reply, State#state{cb_state=CbModule:change_id(NewChangeId, NewCbState),
                                change_id=NewChangeId}, lease_time(LeaseTime)};
-handle_reply({save_reply, Reply, NewCbState}, State=#state{cb_module=CbModule,
+handle_reply_({save_reply, Reply, NewCbState}, State=#state{cb_module=CbModule,
                                                            id=Id,
                                                            provider=Provider,
                                                            lease_time=LeaseTime,
@@ -313,7 +332,7 @@ handle_reply({save_reply, Reply, NewCbState}, State=#state{cb_module=CbModule,
     save_state(Provider, Id, CbModule:change_id(NewChangeId, NewCbState), ChangeId),
     {reply, Reply, State#state{cb_state=CbModule:change_id(NewChangeId, NewCbState),
                                change_id=NewChangeId}, lease_time(LeaseTime)};
-handle_reply({save, Updates, NewCbState}, State=#state{cb_module=CbModule,
+handle_reply_({save, Updates, NewCbState}, State=#state{cb_module=CbModule,
                                                        id=Id,
                                                        lease_time=LeaseTime,
                                                        provider=Provider,
@@ -325,7 +344,7 @@ handle_reply({save, Updates, NewCbState}, State=#state{cb_module=CbModule,
     save_state(Provider, Id, Ref, Updates, NewChangeId, ChangeId),
     {noreply, State#state{cb_state=CbModule:change_id(NewCbState, NewChangeId),
                           change_id=NewChangeId}, lease_time(LeaseTime)};
-handle_reply({save, NewCbState}, State=#state{cb_module=CbModule,
+handle_reply_({save, NewCbState}, State=#state{cb_module=CbModule,
                                               id=Id,
                                               provider=Provider,
                                               lease_time=LeaseTime,
@@ -348,3 +367,8 @@ lease_time(X) -> X.
 
 lease_time(0, _) -> infinity;
 lease_time(L, I) -> L - I.
+
+maybe_enqueue_grain(GrainRef = #{placement := {stateless, _}}) ->
+    erleans_stateless:enqueue_grain(GrainRef, self());
+maybe_enqueue_grain(_) ->
+    ok.

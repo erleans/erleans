@@ -15,7 +15,7 @@ Activations are registered through [lasp_pg](https://github.com/lasp-lang/lasp_p
 
 Stateless grains have no restriction on the number of activations and do not persist state to a database.
 
-Stateless grain activations are registered locally through [gproc](https://github.com/uwiger/gproc/).
+Stateless grain activations are pooled through [sbroker](https://github.com/fishcakez/sbroker/) while being counted by a [gproc](https://github.com/uwiger/gproc/) resource counter. This allows for the use of sbroker to select an activation if available and to create a new activation if none were available immediately and the number currently activated is less than the max allowed.
 
 ### Reminders
 

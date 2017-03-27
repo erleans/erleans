@@ -62,9 +62,13 @@ unregister_name(Name, Pid) ->
             fail
     end.
 
--spec whereis_name(Name :: term()) -> pid() | undefined.
-whereis_name(Name) ->
-    case lasp_pg:members(Name) of
+-spec whereis_name(GrainRef :: erleans:grain_ref()) -> pid() | undefined.
+whereis_name(GrainRef=#{placement := stateless}) ->
+    whereis_stateless(GrainRef);
+whereis_name(GrainRef=#{placement := {stateless, _}}) ->
+    whereis_stateless(GrainRef);
+whereis_name(GrainRef) ->
+    case lasp_pg:members(GrainRef) of
         {ok, Set} ->
             case sets:to_list(Set) of
                 [Pid | _] ->
@@ -83,4 +87,12 @@ send(Name, Message) ->
             Pid ! Message;
         undefined ->
             error({badarg, Name})
+    end.
+
+whereis_stateless(GrainRef) ->
+    case gproc_pool:pick_worker(GrainRef) of
+        false ->
+            undefined;
+        Pid ->
+            Pid
     end.

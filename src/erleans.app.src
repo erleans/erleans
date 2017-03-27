@@ -10,7 +10,9 @@
     sasl,
     uuid,
     lasp,
-    lasp_pg
+    lasp_pg,
+    gproc,
+    sbroker
    ]},
   {modules, []},
   {env, [{default_lease_time, 2700000}, %% 45 minutes

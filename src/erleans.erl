@@ -13,10 +13,10 @@
 
 -type provider() :: module().
 
--opaque grain_ref() :: #{implementing_module := module(),
-                         id := term(),
-                         placement := placement(),
-                         provider => provider()}.
+-type grain_ref() :: #{implementing_module := module(),
+                       id := term(),
+                       placement := placement(),
+                       provider => provider()}.
 
 -type placement() :: random | prefer_local | stateless | {stateless, integer()}. %% | load
 
@@ -26,9 +26,9 @@
 
 -spec get_grain(atom(), any()) -> grain_ref().
 get_grain(ImplementingModule, Id) ->
-    BaseGrainRef =#{implementing_module => ImplementingModule,
-                    placement => placement(ImplementingModule),
-                    id => Id},
+    BaseGrainRef = #{implementing_module => ImplementingModule,
+                     placement => placement(ImplementingModule),
+                     id => Id},
     case provider(ImplementingModule) of
         undefined ->
             BaseGrainRef;
