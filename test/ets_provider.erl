@@ -13,8 +13,8 @@ init() ->
 
 read(Id) ->
     case ets:lookup(?TAB, Id) of
-        [{Id, {Object, _ETag}}] ->
-            {ok, Object};
+        [{Id, {Object, ETag}}] ->
+            {ok, Object, ETag};
         _ ->
             {error, not_found}
     end.
@@ -28,6 +28,8 @@ update(Id, State, ETag, NewETag) ->
         [{Id, {_, E}}] when E =:= ETag ->
             true = ets:insert(?TAB, {Id, {State, NewETag}}),
             ok;
+        [{Id, {_, E}}] when E =/= ETag ->
+            {error, {bad_etag, E, ETag}};
         _ ->
             {error, not_found}
     end.

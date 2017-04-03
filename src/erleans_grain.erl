@@ -69,29 +69,21 @@
     {save, State :: cb_state()} |
     {save, Updates :: maps:map(), CbState :: cb_state()}.
 
--callback etag(CbState :: cb_state()) ->
-    ETag :: integer().
-
--callback etag(ETag :: integer(), CbState :: cb_state()) ->
-    State :: cb_state().
-
 -optional_callbacks([provider/0,
-                     placement/0,
-                     etag/1,
-                     etag/2]).
+                     placement/0]).
 
 -record(state,
-       { cb_module   :: module(),
-         cb_state    :: cb_state(),
+       { cb_module             :: module(),
+         cb_state              :: cb_state(),
 
-         id :: term(),
-         etag   :: integer(),
-         provider    :: term(),
-         ref         :: erleans:grain_ref(),
-         tref        :: reference(),
-         create_time :: non_neg_integer(),
-         lease_time  :: non_neg_integer() | infinity,
-         life_time   :: non_neg_integer() | infinity,
+         id                    :: term(),
+         etag                  :: integer(),
+         provider              :: term(),
+         ref                   :: erleans:grain_ref(),
+         tref                  :: reference(),
+         create_time           :: non_neg_integer(),
+         lease_time            :: non_neg_integer() | infinity,
+         life_time             :: non_neg_integer() | infinity,
          eval_timeout_interval :: non_neg_integer()
        }).
 
@@ -117,7 +109,16 @@ call(GrainRef, Request) ->
 
 -spec call(GrainRef :: erleans:grain_ref(), Request :: term(), non_neg_integer() | infinity) -> Reply :: term().
 call(GrainRef, Request, Timeout) ->
-    do_for_ref(GrainRef, fun(Pid) -> gen_server:call(Pid, Request, Timeout) end).
+    do_for_ref(GrainRef, fun(Pid) -> 
+                             try 
+                                 gen_server:call(Pid, Request, Timeout) 
+                             catch
+                                 exit:{{bad_etag, E1, E2}, _} ->
+                                     lager:error("at=grain_exit reason=bad_etag initial_etag=~p saved_etag=~p",
+                                                 [E1, E2]),
+                                     {exit, saved_etag_changed}
+                             end
+                         end).
 
 -spec cast(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 cast(GrainRef, Request) ->
@@ -177,19 +178,19 @@ activate_random(GrainRef) ->
 init([GrainRef=#{id := Id,
                  implementing_module := CbModule}]) ->
     process_flag(trap_exit, true),
-    CbState = case maps:find(provider, GrainRef) of
-                  {ok, Provider} ->
-                      case Provider:read(Id) of
-                          {ok, SavedState} ->
-                              SavedState;
-                          _ ->
-                              %notfound
-                              #{}
-                      end;
-                  error ->
-                      Provider = undefined,
-                      #{}
-              end,
+    {CbState, ETag} = case maps:find(provider, GrainRef) of
+                          {ok, Provider} ->
+                              case Provider:read(Id) of
+                                  {ok, SavedState, E} ->
+                                      {SavedState, E};
+                                  _ ->
+                                                %notfound
+                                      {#{}, undefined}
+                              end;
+                          error ->
+                              Provider = undefined,
+                              {#{}, undefined}
+                      end,
 
     maybe_enqueue_grain(GrainRef),
     
@@ -205,7 +206,7 @@ init([GrainRef=#{id := Id,
                     {ok, CbState1, GrainOpts} = CbModule:init(CbState)
             end,
 
-            {CbState2, ETag} = verify_etag(Id, Provider, undefined, CbState1),            
+            {CbState2, ETag1} = verify_etag(Id, Provider, ETag, CbState1),            
             CreateTime = maps:get(create_time, GrainOpts, erlang:system_time(seconds)),
             LeaseTime = maps:get(lease_time, GrainOpts, erleans_config:get(default_lease_time)),
             LifeTime = maps:get(life_time, GrainOpts, erleans_config:get(default_life_time)),
@@ -215,7 +216,7 @@ init([GrainRef=#{id := Id,
                            cb_state    = CbState2,
 
                            id          = Id,
-                           etag        = ETag,
+                           etag        = ETag1,
                            provider    = Provider,
                            ref         = GrainRef,
                            tref        = TRef,
@@ -355,7 +356,12 @@ handle_reply_({save, NewCbState}, State=#state{id=Id,
                           etag=NewETag}, lease_time(LeaseTime)}.
 
 save_state(Provider, Id, CbState, ETag, NewETag) ->
-    ok = Provider:update(Id, CbState, ETag, NewETag).
+    case Provider:update(Id, CbState, ETag, NewETag) of        
+        ok ->
+            ok;
+        {error, Reason} ->
+            exit(Reason)
+    end.
 
 save_state(Provider, _Id, Ref, Updates, ETag, NewETag) ->
     ok = Provider:update(Ref, Updates, ETag, NewETag).
@@ -371,21 +377,9 @@ maybe_enqueue_grain(GrainRef = #{placement := {stateless, _}}) ->
 maybe_enqueue_grain(_) ->
     ok.
 
-verify_etag(Id, Provider, undefined, CbState) ->
+verify_etag(Id, Provider, undefined, CbState) ->    
     ETag = erlang:phash2(CbState),
     Provider:insert(Id, CbState, ETag),
     {CbState, ETag};
 verify_etag(_, _, ETag, CbState) ->
-    case ETag =:= erlang:phash2(CbState) of
-        true ->
-            {CbState, ETag};
-        false ->
-            throw(bad_etag)
-    end;
-verify_etag(_, _, ETag, CbState) ->    
-    case ETag =:= erlang:phash2(CbState) of
-        true ->
-            {CbState, ETag};
-        false ->
-            throw(bad_etag)
-    end.
+    {CbState, ETag}.

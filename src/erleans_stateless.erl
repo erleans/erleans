@@ -41,6 +41,7 @@ pick_grain(GrainRef = #{placement := {stateless, N}}) ->
             erleans_grain_sup:start_child(node(), GrainRef)            
     end.
             
+-spec enqueue_grain(erleans:grain_ref(), pid()) -> {await, reference(), pid()} | {drop, 0}.
 enqueue_grain(GrainRef, Pid) ->
     erleans_stateless_broker:start_link(GrainRef),
     sbroker:async_ask_r(?broker(GrainRef), Pid, {Pid, erleans_grain_tag}).

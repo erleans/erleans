@@ -11,7 +11,8 @@
 
 -export([placement/0,
          provider/0,
-         node/1,
+         save/1,
+         node/1,         
          deactivated_counter/1,
          activated_counter/1]).
 
@@ -38,6 +39,9 @@ deactivated_counter(Ref) ->
 activated_counter(Ref) ->
     erleans_grain:call(Ref, activated_counter).
 
+save(Ref) ->
+    erleans_grain:call(Ref, save).
+
 node(Ref) ->
     erleans_grain:call(Ref, node).
 
@@ -55,7 +59,9 @@ handle_call(deactivated_counter, _From, State) ->
 handle_call(activated_counter, _From, State=#{activated_counter := Counter}) ->
     {reply, {ok, Counter}, State};
 handle_call(activated_counter, _From, State) ->
-    {reply, {ok, 0}, State}.
+    {reply, {ok, 0}, State};
+handle_call(save, _From, State) ->
+    {save_reply, ok, State}.
 
 handle_cast(_, State) ->
     {noreply, State}.

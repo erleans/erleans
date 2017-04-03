@@ -23,6 +23,6 @@ init([]) ->
                  period => 1},
     ChildSpecs = [#{id => erleans_grain,
                     start => {erleans_grain, start_link, []},
-                    restart => transient,
+                    restart => temporary,
                     shutdown => 5000}],
     {ok, {SupFlags, ChildSpecs}}.

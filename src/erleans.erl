@@ -20,9 +20,12 @@
 
 -type placement() :: random | prefer_local | stateless | {stateless, integer()}. %% | load
 
+-type etag() :: integer().
+
 -export_type([grain_ref/0,
               placement/0,
-              provider/0]).
+              provider/0,
+              etag/0]).
 
 -spec get_grain(atom(), any()) -> grain_ref().
 get_grain(ImplementingModule, Id) ->
