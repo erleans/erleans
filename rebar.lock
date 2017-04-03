@@ -12,6 +12,7 @@
  {<<"quickrand">>,{pkg,<<"quickrand">>,<<"1.6.0">>},1},
  {<<"rand_compat">>,{pkg,<<"rand_compat">>,<<"0.0.1">>},1},
  {<<"riak_dt">>,{pkg,<<"riak_dt">>,<<"2.1.1">>},2},
+ {<<"sbroker">>,{pkg,<<"sbroker">>,<<"1.0.0">>},0},
  {<<"sext">>,{pkg,<<"sext">>,<<"1.4.0">>},1},
  {<<"time_compat">>,{pkg,<<"time_compat">>,<<"0.0.1">>},1},
  {<<"types">>,
@@ -34,6 +35,7 @@
  {<<"quickrand">>, <<"33A277A639C442D77AB5C1EEA4641A49E3F034FD13658BB57E192A6E083FE77D">>},
  {<<"rand_compat">>, <<"624B590931D27252D0BCF710211699DB3695540706F57D2E91B918A17AB58839">>},
  {<<"riak_dt">>, <<"56B1898A543C561994F5D052FDEA972525CA98F46FDB3DCDB7366E4F92EE8F54">>},
+ {<<"sbroker">>, <<"28FF1B5E58887C5098539F236307B36FE1D3EDAA2ACFF9D6A3D17C2DCAFEBBD0">>},
  {<<"sext">>, <<"2A9443A90C3164231A5E11C73133C4B1762B27FBF1647AA0DE06EF565C47B38B">>},
  {<<"time_compat">>, <<"23FE0AD1FDF3B5B88821B2D04B4B5E865BF587AE66056D671FE0F53514ED8139">>},
  {<<"uuid">>, <<"1BA81515EEB37EEB7F1563B658E30CDF18BCAF1FD6A390BBF3838461753E69D8">>}]}

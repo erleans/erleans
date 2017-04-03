@@ -46,9 +46,6 @@
 
 -callback placement() -> erleans:grain_placement().
 
--optional_callbacks([provider/0,
-                     placement/0]).
-
 -callback handle_call(Msg :: term(), From :: pid(), CbState :: cb_state()) ->
     {reply, Reply :: term(), CbState :: cb_state()} |
     {stop, Reply :: term(), Reason :: term()}.
@@ -72,15 +69,23 @@
     {save, State :: cb_state()} |
     {save, Updates :: maps:map(), CbState :: cb_state()}.
 
--callback change_id(ChangeId :: integer(), CbState :: cb_state()) ->
+-callback etag(CbState :: cb_state()) ->
+    ETag :: integer().
+
+-callback etag(ETag :: integer(), CbState :: cb_state()) ->
     State :: cb_state().
+
+-optional_callbacks([provider/0,
+                     placement/0,
+                     etag/1,
+                     etag/2]).
 
 -record(state,
        { cb_module   :: module(),
          cb_state    :: cb_state(),
 
          id :: term(),
-         change_id   :: integer(),
+         etag   :: integer(),
          provider    :: term(),
          ref         :: erleans:grain_ref(),
          tref        :: reference(),
@@ -90,8 +95,8 @@
          eval_timeout_interval :: non_neg_integer()
        }).
 
-%% -type grain_opts() :: #{ref         := binary(),
-%%                         change_id   := integer(),
+%% -type grain_opts() :: #{ref    := binary(),
+%%                         etag   := integer(),
 
 %%                         lease_time => non_neg_integer() | infinity,
 %%                         life_time => non_neg_integer() | infinity,
@@ -122,7 +127,7 @@ do_for_ref(GrainRef=#{placement := {stateless, _N}}, Fun) ->
     case erleans_stateless:pick_grain(GrainRef) of
         {ok, Pid} when is_pid(Pid) ->
             Fun(Pid);
-        X ->            
+        _ ->            
             exit(timeout)
     end;
 do_for_ref(GrainRef, Fun) ->
@@ -200,17 +205,17 @@ init([GrainRef=#{id := Id,
                     {ok, CbState1, GrainOpts} = CbModule:init(CbState)
             end,
 
-            ChangeId = maps:get(change_id, GrainOpts, 0),
+            {CbState2, ETag} = verify_etag(Id, Provider, undefined, CbState1),            
             CreateTime = maps:get(create_time, GrainOpts, erlang:system_time(seconds)),
             LeaseTime = maps:get(lease_time, GrainOpts, erleans_config:get(default_lease_time)),
             LifeTime = maps:get(life_time, GrainOpts, erleans_config:get(default_life_time)),
             EvalTimeoutInterval = maps:get(eval_timeout_interval, GrainOpts, erleans_config:get(default_eval_interval)),
             TRef = erlang:start_timer(EvalTimeoutInterval, self(), eval_timeout),
             State = #state{cb_module   = CbModule,
-                           cb_state    = CbState1,
+                           cb_state    = CbState2,
 
                            id          = Id,
-                           change_id   = ChangeId,
+                           etag        = ETag,
                            provider    = Provider,
                            ref         = GrainRef,
                            tref        = TRef,
@@ -282,17 +287,16 @@ finalize_and_stop(State=#state{cb_module=CbModule,
                                ref=Ref,
                                provider=Provider,
                                cb_state=CbState,
-                               change_id=ChangeId}) ->
+                               etag=ETag}) ->
     %% Save to or delete from backing storage.
     %% erleans_pm:unregister_name()
     case CbModule:deactivate(CbState) of
         {save, NewCbState} ->
-            NewChangeId = ChangeId + 1,
-            NewCbState1 = CbModule:change_id(NewChangeId, NewCbState),
-            save_state(Provider, Id, NewCbState1, ChangeId),
+            NewETag = erlang:phash2(NewCbState),
+            save_state(Provider, Id, NewCbState, ETag, NewETag),
             erleans_pm:unregister_name(Ref, self()),
-            {stop, normal, State#state{cb_state=NewCbState1,
-                                       change_id=NewChangeId}};
+            {stop, normal, State#state{cb_state=NewCbState,
+                                       etag=ETag}};
         {ok, NewCbState} ->
             {stop, normal, State#state{cb_state=NewCbState}}
     end.
@@ -310,57 +314,51 @@ handle_reply_({reply, Reply, NewCbState}, State=#state{lease_time=LeaseTime}) ->
     {reply, Reply, State#state{cb_state=NewCbState}, lease_time(LeaseTime)};
 handle_reply_({noreply, NewCbState}, State=#state{lease_time=LeaseTime}) ->
     {noreply, State#state{cb_state=NewCbState}, lease_time(LeaseTime)};
-handle_reply_({save_reply, Reply, Updates, NewCbState}, State=#state{cb_module=CbModule,
-                                                                    id=Id,
-                                                                    lease_time=LeaseTime,
-                                                                    provider=Provider,
-                                                                    ref=Ref,
-                                                                    change_id=ChangeId})
+handle_reply_({save_reply, Reply, Updates, NewCbState}, State=#state{id=Id,
+                                                                     lease_time=LeaseTime,
+                                                                     provider=Provider,
+                                                                     ref=Ref,
+                                                                     etag=ETag})
   when is_map(Updates) ->
-    %% Saving requires a change_id so it can verify no other process has updated the row before us.
-    %% The actor needs to crash in the case that the change_id found in the table has incremented.
-    NewChangeId = ChangeId + 1,
-    save_state(Provider, Id, Ref, Updates, NewChangeId, ChangeId),
-    {reply, Reply, State#state{cb_state=CbModule:change_id(NewChangeId, NewCbState),
-                               change_id=NewChangeId}, lease_time(LeaseTime)};
-handle_reply_({save_reply, Reply, NewCbState}, State=#state{cb_module=CbModule,
-                                                           id=Id,
-                                                           provider=Provider,
-                                                           lease_time=LeaseTime,
-                                                           change_id=ChangeId}) ->
-    NewChangeId = ChangeId + 1,
-    save_state(Provider, Id, CbModule:change_id(NewChangeId, NewCbState), ChangeId),
-    {reply, Reply, State#state{cb_state=CbModule:change_id(NewChangeId, NewCbState),
-                               change_id=NewChangeId}, lease_time(LeaseTime)};
-handle_reply_({save, Updates, NewCbState}, State=#state{cb_module=CbModule,
-                                                       id=Id,
-                                                       lease_time=LeaseTime,
-                                                       provider=Provider,
-                                                       ref=Ref,
-                                                       change_id=ChangeId}) when is_map(Updates) ->
-    %% Saving requires a change_id so it can verify no other process has updated the row before us.
-    %% The actor needs to crash in the case that the change_id found in the table has incremented.
-    NewChangeId = ChangeId + 1,
-    save_state(Provider, Id, Ref, Updates, NewChangeId, ChangeId),
-    {noreply, State#state{cb_state=CbModule:change_id(NewCbState, NewChangeId),
-                          change_id=NewChangeId}, lease_time(LeaseTime)};
-handle_reply_({save, NewCbState}, State=#state{cb_module=CbModule,
-                                              id=Id,
-                                              provider=Provider,
-                                              lease_time=LeaseTime,
-                                              change_id=ChangeId}) ->
-    NewChangeId = ChangeId + 1,
-    NewCbState1 = CbModule:change_id(NewChangeId, NewCbState),
-    save_state(Provider, Id, NewCbState1, ChangeId),
-    {noreply, State#state{cb_state=NewCbState1,
-                          change_id=NewChangeId}, lease_time(LeaseTime)}.
+    %% Saving requires an etag so it can verify no other process has updated the row before us.
+    %% The actor needs to crash in the case that the etag found in the table has chnaged.
+    NewETag = erlang:phash2(NewCbState),
+    save_state(Provider, Id, Ref, Updates, ETag, NewETag),
+    {reply, Reply, State#state{cb_state=NewCbState,
+                               etag=ETag}, lease_time(LeaseTime)};
+handle_reply_({save_reply, Reply, NewCbState}, State=#state{id=Id,
+                                                            provider=Provider,
+                                                            lease_time=LeaseTime,
+                                                            etag=ETag}) ->
+    NewETag = erlang:phash2(NewCbState),
+    save_state(Provider, Id, NewCbState, ETag, NewETag),
+    {reply, Reply, State#state{cb_state=NewCbState,
+                               etag=NewETag}, lease_time(LeaseTime)};
+handle_reply_({save, Updates, NewCbState}, State=#state{id=Id,
+                                                        lease_time=LeaseTime,
+                                                        provider=Provider,
+                                                        ref=Ref,
+                                                        etag=ETag}) when is_map(Updates) ->
+    %% Saving requires an etag so it can verify no other process has updated the row before us.
+    %% The actor needs to crash in the case that the etag found in the table has changed.
+    NewETag = erlang:phash2(NewCbState),
+    save_state(Provider, Id, Ref, Updates, ETag, NewETag),
+    {noreply, State#state{cb_state=NewCbState,
+                          etag=NewETag}, lease_time(LeaseTime)};
+handle_reply_({save, NewCbState}, State=#state{id=Id,
+                                               provider=Provider,
+                                               lease_time=LeaseTime,
+                                               etag=ETag}) ->
+    NewETag = erlang:phash2(NewCbState),
+    save_state(Provider, Id, NewCbState, ETag, NewETag),
+    {noreply, State#state{cb_state=NewCbState,
+                          etag=NewETag}, lease_time(LeaseTime)}.
 
-save_state(Provider, Id, CbState, ChangeId) ->
-    ok = Provider:update(Id, CbState, [{change_id, '=', ChangeId}]).
+save_state(Provider, Id, CbState, ETag, NewETag) ->
+    ok = Provider:update(Id, CbState, ETag, NewETag).
 
-save_state(Provider, _Id, Ref, Updates, NewChangeId, ChangeId) ->
-    ok = Provider:update(Ref, Updates#{change_id => NewChangeId},
-                         [{change_id, '=', ChangeId}]).
+save_state(Provider, _Id, Ref, Updates, ETag, NewETag) ->
+    ok = Provider:update(Ref, Updates, ETag, NewETag).
 
 lease_time(0) -> infinity;
 lease_time(X) -> X.
@@ -372,3 +370,22 @@ maybe_enqueue_grain(GrainRef = #{placement := {stateless, _}}) ->
     erleans_stateless:enqueue_grain(GrainRef, self());
 maybe_enqueue_grain(_) ->
     ok.
+
+verify_etag(Id, Provider, undefined, CbState) ->
+    ETag = erlang:phash2(CbState),
+    Provider:insert(Id, CbState, ETag),
+    {CbState, ETag};
+verify_etag(_, _, ETag, CbState) ->
+    case ETag =:= erlang:phash2(CbState) of
+        true ->
+            {CbState, ETag};
+        false ->
+            throw(bad_etag)
+    end;
+verify_etag(_, _, ETag, CbState) ->    
+    case ETag =:= erlang:phash2(CbState) of
+        true ->
+            {CbState, ETag};
+        false ->
+            throw(bad_etag)
+    end.

@@ -2,9 +2,9 @@
 
 -export([init/0,
          read/1,
-         insert/2,
-         update/3,
-         update/4]).
+         insert/3,
+         update/4,
+         update/5]).
 
 -define(TAB, ets_provider_tab).
 
@@ -13,19 +13,24 @@ init() ->
 
 read(Id) ->
     case ets:lookup(?TAB, Id) of
-        [{Id, Object}] ->
+        [{Id, {Object, _ETag}}] ->
             {ok, Object};
         _ ->
             {error, not_found}
     end.
 
-insert(Id, State) ->
-    true = ets:insert(?TAB, {Id, State}),
+insert(Id, State, ETag) ->
+    true = ets:insert(?TAB, {Id, {State, ETag}}),
     ok.
 
-update(Id, State, _Predicates) ->
-    true = ets:insert(?TAB, {Id, State}),
-    ok.
+update(Id, State, ETag, NewETag) ->
+    case ets:lookup(?TAB, Id) of
+        [{Id, {_, E}}] when E =:= ETag ->
+            true = ets:insert(?TAB, {Id, {State, NewETag}}),
+            ok;
+        _ ->
+            {error, not_found}
+    end.
 
-update(_Ref, _Id, _Updates, _Predicates) ->
+update(_Ref, _Id, _Updates, _Predicates, _ETag) ->
     ok.
