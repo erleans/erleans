@@ -15,10 +15,11 @@
 -include("test_utils.hrl").
 
 all() ->
-    [manual_start_stop, bad_etag_save].
+    [manual_start_stop, bad_etag_save, ephemeral_state].
 
 init_per_suite(Config) ->
     code:ensure_loaded(test_grain),
+    code:ensure_loaded(test_ephemeral_state_grain),
     application:load(erleans),
     %% set a really low lease time for testing deactivations
     application:set_env(erleans, default_lease_time, 1),
@@ -36,8 +37,8 @@ end_per_testcase(_, _Config) ->
     ok.
 
 manual_start_stop(_Config) ->
-    Grain1 = erleans:get_grain(test_grain, <<"grain1">>),
-    Grain2 = erleans:get_grain(test_grain, <<"grain2">>),
+    Grain1 = erleans:get_grain(test_grain, <<"manual-start-stop-grain1">>),
+    Grain2 = erleans:get_grain(test_grain, <<"manual-start-stop-grain2">>),
 
     ?assertEqual({ok, 1}, test_grain:activated_counter(Grain1)),
     ?assertEqual({ok, 1}, test_grain:activated_counter(Grain2)),
@@ -57,14 +58,14 @@ manual_start_stop(_Config) ->
 
 bad_etag_save(_Config) ->
     application:set_env(erleans, default_lease_time, 60),
-    Grain = erleans:get_grain(test_grain, <<"grain3">>),
-    
+    Grain = erleans:get_grain(test_grain, <<"bad-etag-save-grain">>),
+
     ?assertEqual({ok, 1}, test_grain:activated_counter(Grain)),
 
     NewState = #{activated_counter => 2, deactivated_counter => 0},
     NewETag = erlang:phash2(NewState),
-    ets_provider:insert(<<"grain3">>, NewState, NewETag),
-    
+    ets_provider:insert(<<"bad-etag-save-grain">>, NewState, NewETag),
+
     %% Now a save call should crash the grain
     ?assertMatch({exit, saved_etag_changed}, test_grain:save(Grain)),
 
@@ -72,5 +73,25 @@ bad_etag_save(_Config) ->
 
     %% resulting in a new activation when called again
     ?assertEqual({ok, 3}, test_grain:activated_counter(Grain)),
+
+    ok.
+
+ephemeral_state(_Config) ->
+    application:set_env(erleans, default_lease_time, 1),
+    Grain = erleans:get_grain(test_ephemeral_state_grain, <<"ephemeral-state-grain">>),
+
+    ?assertEqual({ok, 1}, test_ephemeral_state_grain:activated_counter(Grain)),
+    ?assertEqual({ok, 0}, test_ephemeral_state_grain:ephemeral_counter(Grain)),
+
+    ?assertEqual(ok, test_ephemeral_state_grain:increment_ephemeral_counter(Grain)),
+
+    %% with a leasetime of 1 second it should be gone now
+    ?UNTIL(erleans_pm:whereis_name(Grain) =:= undefined),
+
+    %% sending message by asking for the counter again will re-activate grain
+    %% and increment the activated counter
+    ?assertEqual({ok, 2}, test_ephemeral_state_grain:activated_counter(Grain)),
+    %% But ephemeral counter should be 0 again
+    ?assertEqual({ok, 0}, test_ephemeral_state_grain:ephemeral_counter(Grain)),
 
     ok.

@@ -34,7 +34,8 @@
 
 -define(DEFAULT_TIMEOUT, 5000).
 
--type cb_state() :: term().
+-type cb_state() :: term() | #{persistent := term(),
+                               ephemeral  := term()}.
 
 -callback init(Arg :: term()) ->
     {ok, State :: cb_state()} |
@@ -97,8 +98,8 @@
 -spec start_link(GrainRef :: erleans:grain_ref()) -> {ok, pid()} | {error, any()}.
 start_link(GrainRef = #{placement := {stateless, _N}}) ->
     {ok, Pid} = gen_server:start_link(?MODULE, [GrainRef], []),
-    gproc:reg(?stateless_counter(GrainRef)), 
-    gproc:reg_other(?stateless(GrainRef), Pid), 
+    gproc:reg(?stateless_counter(GrainRef)),
+    gproc:reg_other(?stateless(GrainRef), Pid),
     {ok, Pid};
 start_link(GrainRef) ->
     gen_server:start_link({via, erleans_pm, GrainRef}, ?MODULE, [GrainRef], []).
@@ -109,9 +110,9 @@ call(GrainRef, Request) ->
 
 -spec call(GrainRef :: erleans:grain_ref(), Request :: term(), non_neg_integer() | infinity) -> Reply :: term().
 call(GrainRef, Request, Timeout) ->
-    do_for_ref(GrainRef, fun(Pid) -> 
-                             try 
-                                 gen_server:call(Pid, Request, Timeout) 
+    do_for_ref(GrainRef, fun(Pid) ->
+                             try
+                                 gen_server:call(Pid, Request, Timeout)
                              catch
                                  exit:{{bad_etag, E1, E2}, _} ->
                                      lager:error("at=grain_exit reason=bad_etag initial_etag=~p saved_etag=~p",
@@ -128,7 +129,7 @@ do_for_ref(GrainRef=#{placement := {stateless, _N}}, Fun) ->
     case erleans_stateless:pick_grain(GrainRef) of
         {ok, Pid} when is_pid(Pid) ->
             Fun(Pid);
-        _ ->            
+        _ ->
             exit(timeout)
     end;
 do_for_ref(GrainRef, Fun) ->
@@ -184,7 +185,6 @@ init([GrainRef=#{id := Id,
                                   {ok, SavedState, E} ->
                                       {SavedState, E};
                                   _ ->
-                                                %notfound
                                       {#{}, undefined}
                               end;
                           error ->
@@ -193,7 +193,7 @@ init([GrainRef=#{id := Id,
                       end,
 
     maybe_enqueue_grain(GrainRef),
-    
+
     case CbState of
         notfound ->
             {stop, notfound};
@@ -206,7 +206,7 @@ init([GrainRef=#{id := Id,
                     {ok, CbState1, GrainOpts} = CbModule:init(CbState)
             end,
 
-            {CbState2, ETag1} = verify_etag(Id, Provider, ETag, CbState1),            
+            {CbState2, ETag1} = verify_etag(Id, Provider, ETag, CbState1),
             CreateTime = maps:get(create_time, GrainOpts, erlang:system_time(seconds)),
             LeaseTime = maps:get(lease_time, GrainOpts, erleans_config:get(default_lease_time)),
             LifeTime = maps:get(life_time, GrainOpts, erleans_config:get(default_life_time)),
@@ -293,11 +293,10 @@ finalize_and_stop(State=#state{cb_module=CbModule,
     %% erleans_pm:unregister_name()
     case CbModule:deactivate(CbState) of
         {save, NewCbState} ->
-            NewETag = erlang:phash2(NewCbState),
-            save_state(Provider, Id, NewCbState, ETag, NewETag),
+            NewETag = replace_state(Provider, Id, NewCbState, ETag),
             erleans_pm:unregister_name(Ref, self()),
             {stop, normal, State#state{cb_state=NewCbState,
-                                       etag=ETag}};
+                                       etag=NewETag}};
         {ok, NewCbState} ->
             {stop, normal, State#state{cb_state=NewCbState}}
     end.
@@ -318,53 +317,68 @@ handle_reply_({noreply, NewCbState}, State=#state{lease_time=LeaseTime}) ->
 handle_reply_({save_reply, Reply, Updates, NewCbState}, State=#state{id=Id,
                                                                      lease_time=LeaseTime,
                                                                      provider=Provider,
-                                                                     ref=Ref,
                                                                      etag=ETag})
   when is_map(Updates) ->
     %% Saving requires an etag so it can verify no other process has updated the row before us.
     %% The actor needs to crash in the case that the etag found in the table has chnaged.
-    NewETag = erlang:phash2(NewCbState),
-    save_state(Provider, Id, Ref, Updates, ETag, NewETag),
+    NewETag = update_state(Provider, Id, Updates, NewCbState, ETag),
     {reply, Reply, State#state{cb_state=NewCbState,
-                               etag=ETag}, lease_time(LeaseTime)};
+                               etag=NewETag}, lease_time(LeaseTime)};
 handle_reply_({save_reply, Reply, NewCbState}, State=#state{id=Id,
                                                             provider=Provider,
                                                             lease_time=LeaseTime,
                                                             etag=ETag}) ->
-    NewETag = erlang:phash2(NewCbState),
-    save_state(Provider, Id, NewCbState, ETag, NewETag),
+    NewETag = replace_state(Provider, Id, NewCbState, ETag),
     {reply, Reply, State#state{cb_state=NewCbState,
                                etag=NewETag}, lease_time(LeaseTime)};
 handle_reply_({save, Updates, NewCbState}, State=#state{id=Id,
                                                         lease_time=LeaseTime,
                                                         provider=Provider,
-                                                        ref=Ref,
                                                         etag=ETag}) when is_map(Updates) ->
-    %% Saving requires an etag so it can verify no other process has updated the row before us.
-    %% The actor needs to crash in the case that the etag found in the table has changed.
-    NewETag = erlang:phash2(NewCbState),
-    save_state(Provider, Id, Ref, Updates, ETag, NewETag),
+    NewETag = update_state(Provider, Id, Updates, NewCbState, ETag),
     {noreply, State#state{cb_state=NewCbState,
                           etag=NewETag}, lease_time(LeaseTime)};
 handle_reply_({save, NewCbState}, State=#state{id=Id,
                                                provider=Provider,
                                                lease_time=LeaseTime,
                                                etag=ETag}) ->
-    NewETag = erlang:phash2(NewCbState),
-    save_state(Provider, Id, NewCbState, ETag, NewETag),
+    NewETag = replace_state(Provider, Id, NewCbState, ETag),
     {noreply, State#state{cb_state=NewCbState,
                           etag=NewETag}, lease_time(LeaseTime)}.
 
-save_state(Provider, Id, CbState, ETag, NewETag) ->
-    case Provider:update(Id, CbState, ETag, NewETag) of        
+%% Saving requires an etag so it can verify no other process has updated the row before us.
+%% The actor needs to crash in the case that the etag found in the table has changed.
+update_state(Provider, Id, Updates, #{persistent := PState,
+                                      ephemeral  := _}, ETag) ->
+    NewETag = etag(PState),
+    update_state_(Provider, Id, Updates, ETag, NewETag);
+update_state(Provider, Id, Updates, CbState, ETag) ->
+    NewETag = etag(CbState),
+    update_state_(Provider, Id, Updates, ETag, NewETag).
+
+update_state_(Provider, Id, Updates, ETag, NewETag) ->
+    case Provider:update(Id, Updates, ETag, NewETag) of
         ok ->
-            ok;
+            NewETag;
         {error, Reason} ->
             exit(Reason)
     end.
 
-save_state(Provider, _Id, Ref, Updates, ETag, NewETag) ->
-    ok = Provider:update(Ref, Updates, ETag, NewETag).
+replace_state(Provider, Id, #{persistent := PState,
+                              ephemeral  := _}, ETag) ->
+    NewETag = etag(PState),
+    replace_state(Provider, Id, PState, ETag, NewETag);
+replace_state(Provider, Id, CbState, ETag) ->
+    NewETag = etag(CbState),
+    replace_state(Provider, Id, CbState, ETag, NewETag).
+
+replace_state(Provider, Id, State, ETag, NewETag) ->
+    case Provider:replace(Id, State, ETag, NewETag) of
+        ok ->
+            NewETag;
+        {error, Reason} ->
+            exit(Reason)
+    end.
 
 lease_time(0) -> infinity;
 lease_time(X) -> X.
@@ -377,9 +391,17 @@ maybe_enqueue_grain(GrainRef = #{placement := {stateless, _}}) ->
 maybe_enqueue_grain(_) ->
     ok.
 
-verify_etag(Id, Provider, undefined, CbState) ->    
-    ETag = erlang:phash2(CbState),
+verify_etag(Id, Provider, undefined, CbState=#{persistent := PState,
+                                               ephemeral  := _}) ->
+    ETag = etag(PState),
+    Provider:insert(Id, PState, ETag),
+    {CbState, ETag};
+verify_etag(Id, Provider, undefined, CbState) ->
+    ETag = etag(CbState),
     Provider:insert(Id, CbState, ETag),
     {CbState, ETag};
 verify_etag(_, _, ETag, CbState) ->
     {CbState, ETag}.
+
+etag(Data) ->
+    erlang:phash2(Data).
