@@ -33,7 +33,9 @@ Streams have a provider type as well for providing a pluggable stream layer.
 
 ### Streams
 
-Grains can subscribe to streams and implement callbacks for handling records as they are published by implementing the `erleans_subscriber` behaviour.
+Grains can subscribe to streams and implement callbacks for handling records as they are published. Each stream is represented by a permanent system grain (meaning it does not deactivate) which manages subscriptions. Stream providers implement how to read from and publish to a given stream backend. On arrival of new events on the stream the grain makes a call to each subscriber with the new event, thus blocking for as long as the slowest subscriber takes to handle the event, before fetching any new events.
+
+A grain must explicitly unsubscribe from a stream or it will continue to receive calls throughout its lifetime. This is because subscriptions are based on the grain reference, not the activation, so if a subscribed grain has deactivated it will be reactivated on the next event on the stream.
 
 ## Differences from gen_server
 
@@ -72,9 +74,9 @@ activated_counter(Ref) ->
 node(Ref) ->
     erleans_grain:call(Ref, node).
 
-init(State=#{activated_counter := Counter}) ->
+init(_Grainref, State=#{activated_counter := Counter}) ->
     {ok, State#{activated_counter => Counter+1}, #{}};
-init(State=#{}) ->
+init(_Grainref, State=#{}) ->
     {ok, State#{activated_counter => 1}, #{}}.
 ```
 

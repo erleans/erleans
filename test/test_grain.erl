@@ -12,17 +12,15 @@
 -export([placement/0,
          provider/0,
          save/1,
-         node/1,         
+         node/1,
          deactivated_counter/1,
          activated_counter/1]).
 
--export([init/1,
+-export([init/2,
          handle_call/3,
          handle_cast/2,
          handle_info/2,
          eval_timer/1,
-         change_id/1,
-         change_id/2,
          deactivate/1]).
 
 -include("erleans.hrl").
@@ -45,9 +43,9 @@ save(Ref) ->
 node(Ref) ->
     erleans_grain:call(Ref, node).
 
-init(State=#{activated_counter := Counter}) ->
+init(_, State=#{activated_counter := Counter}) ->
     {ok, State#{activated_counter => Counter+1}, #{life_time => infinity}};
-init(State=#{}) ->
+init(_, State=#{}) ->
     {ok, State#{activated_counter => 1}, #{life_time => infinity}}.
 
 handle_call(node, _From, State) ->
@@ -76,14 +74,6 @@ deactivate(State=#{deactivated_counter := D}) ->
     {save, State#{deactivated_counter => D+1}};
 deactivate(State) ->
     {save, State#{deactivated_counter => 1}}.
-
-change_id(#{change_id := ChangeId}) ->
-    ChangeId;
-change_id(_) ->
-    0.
-
-change_id(ChangeId, State=#{}) ->
-    State#{change_id => ChangeId}.
 
 %%%===================================================================
 %%% Internal functions

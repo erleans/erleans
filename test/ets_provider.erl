@@ -1,17 +1,17 @@
 -module(ets_provider).
 
--export([init/0,
-         read/1,
-         insert/3,
-         replace/4,
-         update/4]).
+-export([init/1,
+         read/2,
+         insert/4,
+         replace/5,
+         update/5]).
 
 -define(TAB, ets_provider_tab).
 
-init() ->
+init(_Args) ->
     ets:new(?TAB, [public, named_table, set, {keypos, 1}]).
 
-read(Id) ->
+read(_, Id) ->
     case ets:lookup(?TAB, Id) of
         [{Id, {Object, ETag}}] ->
             {ok, Object, ETag};
@@ -19,11 +19,11 @@ read(Id) ->
             {error, not_found}
     end.
 
-insert(Id, State, ETag) ->
+insert(_, Id, State, ETag) ->
     true = ets:insert(?TAB, {Id, {State, ETag}}),
     ok.
 
-replace(Id, State, ETag, NewETag) ->
+replace(_, Id, State, ETag, NewETag) ->
     case ets:lookup(?TAB, Id) of
         [{Id, {_, E}}] when E =:= ETag ->
             true = ets:insert(?TAB, {Id, {State, NewETag}}),
@@ -34,5 +34,5 @@ replace(Id, State, ETag, NewETag) ->
             {error, not_found}
     end.
 
-update(_Id, _Updates, _ETag, _NewETag) ->
+update(_, _Id, _Updates, _ETag, _NewETag) ->
     ok.

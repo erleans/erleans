@@ -1,4 +1,4 @@
--module(erleans_grain_sup).
+-module(erleans_system_grain_sup).
 
 -behaviour(supervisor).
 
@@ -14,15 +14,15 @@ start_link() ->
 -spec start_child(Node :: node(), GrainRef :: erleans:grain_ref())
                  -> {ok, pid()} | {error, supervisor:startchild_err()}.
 start_child(Node, GrainRef) ->
-    lager:info("node=~p grain=~p", [Node, GrainRef]),
+    lager:info("grain=~p", [GrainRef]),
     supervisor:start_child({?MODULE, Node}, [GrainRef]).
 
 init([]) ->
     SupFlags = #{strategy => simple_one_for_one,
-                 intensity => 0,
-                 period => 1},
+                 intensity => 1,
+                 period => 5},
     ChildSpecs = [#{id => erleans_grain,
                     start => {erleans_grain, start_link, []},
-                    restart => temporary,
+                    restart => transient,
                     shutdown => 5000}],
     {ok, {SupFlags, ChildSpecs}}.

@@ -12,14 +12,15 @@
     lasp,
     lasp_pg,
     gproc,
-    sbroker
+    sbroker,
+    erlware_commons
    ]},
   {modules, []},
   {env, [{default_lease_time, 2700000}, %% 45 minutes
          {default_life_time, 0},
          {default_eval_interval, 60}]},
 
-  {maintainers, ["Tristan Sloughter"]},
+  {maintainers, ["Tristan Sloughter", "Bryan Hughes", "Evan Vigil-McClanahan", "Andrew Varner"]},
   {licenses, ["Apache 2"]},
   {links, ["https://github.com/gofactory/erleans"]}
  ]}.

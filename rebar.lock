@@ -1,5 +1,7 @@
 {"1.1.0",
 [{<<"acceptor_pool">>,{pkg,<<"acceptor_pool">>,<<"1.0.0-rc.0">>},2},
+ {<<"cf">>,{pkg,<<"cf">>,<<"0.2.2">>},1},
+ {<<"erlware_commons">>,{pkg,<<"erlware_commons">>,<<"1.0.0">>},0},
  {<<"gen_flow">>,{pkg,<<"gen_flow">>,<<"0.0.3">>},1},
  {<<"goldrush">>,{pkg,<<"goldrush">>,<<"0.1.9">>},1},
  {<<"gproc">>,{pkg,<<"gproc">>,<<"0.6.1">>},0},
@@ -15,14 +17,13 @@
  {<<"sbroker">>,{pkg,<<"sbroker">>,<<"1.0.0">>},0},
  {<<"sext">>,{pkg,<<"sext">>,<<"1.4.0">>},1},
  {<<"time_compat">>,{pkg,<<"time_compat">>,<<"0.0.1">>},1},
- {<<"types">>,
-  {git,"https://github.com/lasp-lang/types.git",
-       {ref,"933e50bcc4f5b4b2e4097c308a95905fd1ab93c2"}},
-  0},
+ {<<"types">>,{pkg,<<"types">>,<<"0.1.1">>},0},
  {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.6.0">>},0}]}.
 [
 {pkg_hash,[
  {<<"acceptor_pool">>, <<"679D741DF87FC13599B1AEF2DF8F78F1F880449A6BEFAB7C44FB6FAE0E92A2DE">>},
+ {<<"cf">>, <<"7F2913FFF90ABCABD0F489896CFEB0B0674F6C8DF6C10B17A83175448029896C">>},
+ {<<"erlware_commons">>, <<"087467DE5833C0BB5B3CCDD387F9E9C1FB816A75B7A709629BF24B5ED3246C51">>},
  {<<"gen_flow">>, <<"639F5C3F52DC3F7459542DE3F72D5BFF11EB7DB8FB055657A3011F9A70FCF0D7">>},
  {<<"goldrush">>, <<"F06E5D5F1277DA5C413E84D5A2924174182FB108DABB39D5EC548B27424CD106">>},
  {<<"gproc">>, <<"4579663E5677970758A05D8F65D13C3E9814EC707AD51D8DCEF7294EDA1A730C">>},
@@ -38,5 +39,6 @@
  {<<"sbroker">>, <<"28FF1B5E58887C5098539F236307B36FE1D3EDAA2ACFF9D6A3D17C2DCAFEBBD0">>},
  {<<"sext">>, <<"2A9443A90C3164231A5E11C73133C4B1762B27FBF1647AA0DE06EF565C47B38B">>},
  {<<"time_compat">>, <<"23FE0AD1FDF3B5B88821B2D04B4B5E865BF587AE66056D671FE0F53514ED8139">>},
+ {<<"types">>, <<"D9A73B6212C9EAA497CCBFC504BC3547A2CBF48137EAE9D54AE50FACC8A9281C">>},
  {<<"uuid">>, <<"1BA81515EEB37EEB7F1563B658E30CDF18BCAF1FD6A390BBF3838461753E69D8">>}]}
 ].

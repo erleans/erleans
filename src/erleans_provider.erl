@@ -9,19 +9,19 @@
 
 -export([]).
 
--callback init() -> ok.
+-callback init(list()) -> ok.
 
--callback read(Id :: any()) -> {ok, State :: any(), ETag :: erleans:etag()} |
-                               {error, not_found}.
+-callback read(Type :: module(), GrainRef :: erleans:grain_ref()) -> {ok, State :: any(), ETag :: erleans:etag()} |
+                                                                     {error, not_found}.
 
--callback insert(Id :: any(), State :: any(), ETag :: erleans:etag()) -> ok.
+-callback insert(Type :: module(), Id :: any(), State :: any(), ETag :: erleans:etag()) -> ok.
 
--callback update(Id :: any(), Update :: list(), ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
+-callback update(Type :: module(), Id :: any(), Update :: list(), ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
     ok |
     {error, {bad_etag, erleans:etag(), erleans:etag()}} |
     {error, not_found}.
 
--callback replace(Id :: any(), State :: any(), ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
+-callback replace(Type :: module(), Id :: any(), State :: any(), ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
     ok |
     {error, {bad_etag, erleans:etag(), erleans:etag()}} |
     {error, not_found}.

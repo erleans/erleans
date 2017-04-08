@@ -21,7 +21,8 @@
 -export([start_link/1,
          call/2,
          call/3,
-         cast/2]).
+         cast/2,
+         subscribe/2]).
 
 -export([init/1,
          handle_call/3,
@@ -37,9 +38,8 @@
 -type cb_state() :: term() | #{persistent := term(),
                                ephemeral  := term()}.
 
--callback init(Arg :: term()) ->
-    {ok, State :: cb_state()} |
-    {ok, State :: cb_state(), timeout() | hibernate} |
+-callback init(Ref :: erleans:grain_ref(), Arg :: term()) ->
+    {ok, State :: cb_state(), opts()} |
     ignore |
     {stop, Reason :: term()}.
 
@@ -88,12 +88,14 @@
          eval_timeout_interval :: non_neg_integer()
        }).
 
-%% -type grain_opts() :: #{ref    := binary(),
-%%                         etag   := integer(),
+-type opts() :: #{ref    := binary(),
+                  etag   := integer(),
 
-%%                         lease_time => non_neg_integer() | infinity,
-%%                         life_time => non_neg_integer() | infinity,
-%%                         eval_timeout_interval => non_neg_integer() | infinity}.
+                  lease_time => non_neg_integer() | infinity,
+                  life_time => non_neg_integer() | infinity,
+                  eval_timeout_interval => non_neg_integer() | infinity}.
+
+-export_types([opts/0]).
 
 -spec start_link(GrainRef :: erleans:grain_ref()) -> {ok, pid()} | {error, any()}.
 start_link(GrainRef = #{placement := {stateless, _N}}) ->
@@ -124,6 +126,11 @@ call(GrainRef, Request, Timeout) ->
 -spec cast(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 cast(GrainRef, Request) ->
     do_for_ref(GrainRef, fun(Pid) -> gen_server:cast(Pid, Request) end).
+
+subscribe(StreamProvider, Topic) ->
+    ConsumerGrain = erleans:get_grain(erleans_consumer_grain, {StreamProvider, Topic}),
+    MyGrain = get(grain_ref),
+    erleans_consumer_grain:subscribe(ConsumerGrain, MyGrain).
 
 do_for_ref(GrainRef=#{placement := {stateless, _N}}, Fun) ->
     case erleans_stateless:pick_grain(GrainRef) of
@@ -165,6 +172,9 @@ activate_stateless(GrainRef, _N) ->
     erleans_grain_sup:start_child(node(), GrainRef).
 
 %% Activate on the local node
+activate_local(GrainRef=#{implementing_module := erleans_consumer_grain}) ->
+    %% erleans_consumer_grain is a system grain, meaning it is transient and not temporary
+    erleans_system_grain_sup:start_child(node(), GrainRef);
 activate_local(GrainRef) ->
     erleans_grain_sup:start_child(node(), GrainRef).
 
@@ -178,10 +188,11 @@ activate_random(GrainRef) ->
 
 init([GrainRef=#{id := Id,
                  implementing_module := CbModule}]) ->
+    put(grain_ref, GrainRef),
     process_flag(trap_exit, true),
     {CbState, ETag} = case maps:find(provider, GrainRef) of
                           {ok, Provider} ->
-                              case Provider:read(Id) of
+                              case Provider:read(CbModule, Id) of
                                   {ok, SavedState, E} ->
                                       {SavedState, E};
                                   _ ->
@@ -198,15 +209,15 @@ init([GrainRef=#{id := Id,
         notfound ->
             {stop, notfound};
         _ ->
-            case erlang:function_exported(CbModule, init, 1) of
+            case erlang:function_exported(CbModule, init, 2) of
                 false ->
                     CbState1 = CbState,
                     GrainOpts = #{};
                 true ->
-                    {ok, CbState1, GrainOpts} = CbModule:init(CbState)
+                    {ok, CbState1, GrainOpts} = CbModule:init(GrainRef, CbState)
             end,
 
-            {CbState2, ETag1} = verify_etag(Id, Provider, ETag, CbState1),
+            {CbState2, ETag1} = verify_etag(CbModule, Id, Provider, ETag, CbState1),
             CreateTime = maps:get(create_time, GrainOpts, erlang:system_time(seconds)),
             LeaseTime = maps:get(lease_time, GrainOpts, erleans_config:get(default_lease_time)),
             LifeTime = maps:get(life_time, GrainOpts, erleans_config:get(default_life_time)),
@@ -293,7 +304,7 @@ finalize_and_stop(State=#state{cb_module=CbModule,
     %% erleans_pm:unregister_name()
     case CbModule:deactivate(CbState) of
         {save, NewCbState} ->
-            NewETag = replace_state(Provider, Id, NewCbState, ETag),
+            NewETag = replace_state(CbModule, Provider, Id, NewCbState, ETag),
             erleans_pm:unregister_name(Ref, self()),
             {stop, normal, State#state{cb_state=NewCbState,
                                        etag=NewETag}};
@@ -315,65 +326,69 @@ handle_reply_({reply, Reply, NewCbState}, State=#state{lease_time=LeaseTime}) ->
 handle_reply_({noreply, NewCbState}, State=#state{lease_time=LeaseTime}) ->
     {noreply, State#state{cb_state=NewCbState}, lease_time(LeaseTime)};
 handle_reply_({save_reply, Reply, Updates, NewCbState}, State=#state{id=Id,
+                                                                     cb_module=CbModule,
                                                                      lease_time=LeaseTime,
                                                                      provider=Provider,
                                                                      etag=ETag})
   when is_map(Updates) ->
     %% Saving requires an etag so it can verify no other process has updated the row before us.
     %% The actor needs to crash in the case that the etag found in the table has chnaged.
-    NewETag = update_state(Provider, Id, Updates, NewCbState, ETag),
+    NewETag = update_state(CbModule, Provider, Id, Updates, NewCbState, ETag),
     {reply, Reply, State#state{cb_state=NewCbState,
                                etag=NewETag}, lease_time(LeaseTime)};
 handle_reply_({save_reply, Reply, NewCbState}, State=#state{id=Id,
+                                                            cb_module=CbModule,
                                                             provider=Provider,
                                                             lease_time=LeaseTime,
                                                             etag=ETag}) ->
-    NewETag = replace_state(Provider, Id, NewCbState, ETag),
+    NewETag = replace_state(CbModule, Provider, Id, NewCbState, ETag),
     {reply, Reply, State#state{cb_state=NewCbState,
                                etag=NewETag}, lease_time(LeaseTime)};
 handle_reply_({save, Updates, NewCbState}, State=#state{id=Id,
+                                                        cb_module=CbModule,
                                                         lease_time=LeaseTime,
                                                         provider=Provider,
                                                         etag=ETag}) when is_map(Updates) ->
-    NewETag = update_state(Provider, Id, Updates, NewCbState, ETag),
+    NewETag = update_state(CbModule, Provider, Id, Updates, NewCbState, ETag),
     {noreply, State#state{cb_state=NewCbState,
                           etag=NewETag}, lease_time(LeaseTime)};
 handle_reply_({save, NewCbState}, State=#state{id=Id,
+                                               cb_module=CbModule,
                                                provider=Provider,
                                                lease_time=LeaseTime,
                                                etag=ETag}) ->
-    NewETag = replace_state(Provider, Id, NewCbState, ETag),
+    NewETag = replace_state(CbModule, Provider, Id, NewCbState, ETag),
     {noreply, State#state{cb_state=NewCbState,
                           etag=NewETag}, lease_time(LeaseTime)}.
 
 %% Saving requires an etag so it can verify no other process has updated the row before us.
 %% The actor needs to crash in the case that the etag found in the table has changed.
-update_state(Provider, Id, Updates, #{persistent := PState,
-                                      ephemeral  := _}, ETag) ->
+update_state(CbModule, Provider, Id, Updates, #{persistent := PState,
+                                                ephemeral  := _}, ETag) ->
     NewETag = etag(PState),
-    update_state_(Provider, Id, Updates, ETag, NewETag);
-update_state(Provider, Id, Updates, CbState, ETag) ->
+    update_state_(CbModule, Provider, Id, Updates, ETag, NewETag);
+update_state(CbModule, Provider, Id, Updates, CbState, ETag) ->
     NewETag = etag(CbState),
-    update_state_(Provider, Id, Updates, ETag, NewETag).
+    update_state_(CbModule, Provider, Id, Updates, ETag, NewETag).
 
-update_state_(Provider, Id, Updates, ETag, NewETag) ->
-    case Provider:update(Id, Updates, ETag, NewETag) of
+update_state_(CbModule, Provider, Id, Updates, ETag, NewETag) ->
+    case Provider:update(CbModule, Id, Updates, ETag, NewETag) of
         ok ->
             NewETag;
         {error, Reason} ->
             exit(Reason)
     end.
 
-replace_state(Provider, Id, #{persistent := PState,
-                              ephemeral  := _}, ETag) ->
+replace_state(CbModule, Provider, Id, #{persistent := PState,
+                                        ephemeral  := _}, ETag) ->
     NewETag = etag(PState),
-    replace_state(Provider, Id, PState, ETag, NewETag);
-replace_state(Provider, Id, CbState, ETag) ->
+    replace_state(CbModule, Provider, Id, PState, ETag, NewETag);
+replace_state(CbModule, Provider, Id, CbState, ETag) ->
     NewETag = etag(CbState),
-    replace_state(Provider, Id, CbState, ETag, NewETag).
+    replace_state(CbModule, Provider, Id, CbState, ETag, NewETag).
 
-replace_state(Provider, Id, State, ETag, NewETag) ->
-    case Provider:replace(Id, State, ETag, NewETag) of
+replace_state(CbModule, Provider, Id, State, ETag, NewETag) ->
+    case Provider:replace(CbModule, Id, State, ETag, NewETag) of
         ok ->
             NewETag;
         {error, Reason} ->
@@ -391,16 +406,16 @@ maybe_enqueue_grain(GrainRef = #{placement := {stateless, _}}) ->
 maybe_enqueue_grain(_) ->
     ok.
 
-verify_etag(Id, Provider, undefined, CbState=#{persistent := PState,
-                                               ephemeral  := _}) ->
+verify_etag(CbModule, Id, Provider, undefined, CbState=#{persistent := PState,
+                                                         ephemeral  := _}) ->
     ETag = etag(PState),
-    Provider:insert(Id, PState, ETag),
+    Provider:insert(CbModule, Id, PState, ETag),
     {CbState, ETag};
-verify_etag(Id, Provider, undefined, CbState) ->
+verify_etag(CbModule, Id, Provider, undefined, CbState) ->
     ETag = etag(CbState),
-    Provider:insert(Id, CbState, ETag),
+    Provider:insert(CbModule, Id, CbState, ETag),
     {CbState, ETag};
-verify_etag(_, _, ETag, CbState) ->
+verify_etag(_, _, _, ETag, CbState) ->
     {CbState, ETag}.
 
 etag(Data) ->

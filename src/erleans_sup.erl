@@ -25,6 +25,11 @@ init([]) ->
                     start => {erleans_grain_sup, start_link, []},
                     restart => permanent,
                     type => supervisor,
+                    shutdown => 5000},
+                  #{id => erleans_system_grain_sup,
+                    start => {erleans_system_grain_sup, start_link, []},
+                    restart => permanent,
+                    type => supervisor,
                     shutdown => 5000}],
     {ok, {SupFlags, ChildSpecs}}.
 
