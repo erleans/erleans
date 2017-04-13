@@ -1,0 +1,51 @@
+version: 2
+executorType: docker
+containerInfo:
+  - image: tsloughter/erlang-git:19.3-2
+    cmd: ["/bin/bash"]
+
+stages:
+  build:
+    workDir: ~/erleans
+    steps:
+      - type: checkout
+
+      - run: command: echo 127.0.0.1 fanon | sudo tee -a /etc/hosts
+
+      - type: cache-restore
+        key: erleans{{ checksum "rebar.lock" }}
+
+      - type: cache-restore
+        key: erleans-hex-packages
+
+      - type: shell
+        shell: /bin/bash
+        command: |
+            set -exu
+
+            rebar3 compile
+            rebar3 xref
+            rebar3 dialyzer
+            rebar3 test
+
+      - type: test-results-store
+        path: ~/erleans/_build/test/logs/
+
+      - type: artifacts-store
+        path: ~/erleans/_build/test/logs
+        destination: common_test
+
+      - type: cache-save
+        key: erleans-{{ checksum "rebar.lock" }}
+        paths:
+          - ~/erleans/_build/default/lib
+          - ~/erleans/_build/test/lib
+
+      - type: cache-save
+        key: erleans-hex-packages
+        paths:
+          - ~/.cache/rebar3/hex/default/packages
+
+      - type: artifacts-store
+        path: ~/erleans/rebar3.crashdump
+        destination: rebar3_crashdump.txt
