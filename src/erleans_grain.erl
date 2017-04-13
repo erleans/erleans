@@ -88,8 +88,8 @@
          eval_timeout_interval :: non_neg_integer()
        }).
 
--type opts() :: #{ref    := binary(),
-                  etag   := integer(),
+-type opts() :: #{ref    => binary(),
+                  etag   => integer(),
 
                   lease_time => non_neg_integer() | infinity,
                   life_time => non_neg_integer() | infinity,

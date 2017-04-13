@@ -15,6 +15,9 @@
 
 -include_lib("lasp_pg/include/lasp_pg.hrl").
 
+-dialyzer({nowarn_function, register_name/2}).
+-dialyzer({nowarn_function, unregister_name/2}).
+
 -spec register_name(Name :: term(), Pid :: pid()) -> yes | no.
 register_name(Name, Pid) when is_pid(Pid) ->
     case lasp_pg:join(Name, Pid, true) of

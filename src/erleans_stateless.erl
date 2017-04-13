@@ -5,6 +5,8 @@
 
 -include("erleans.hrl").
 
+-dialyzer({nowarn_function, enqueue_grain/2}).
+
 -spec pick_grain(erleans:grain_ref()) -> {ok, pid()} | {error, timeout}.
 pick_grain(GrainRef = #{placement := {stateless, N}}) ->
     try
@@ -38,9 +40,9 @@ pick_grain(GrainRef = #{placement := {stateless, N}}) ->
             %% Note: a large burst could mean we end up with more than the max
             %% activations allowed if they happen to have a noproc thrown
             %% before one of them can spawn the broker
-            erleans_grain_sup:start_child(node(), GrainRef)            
+            erleans_grain_sup:start_child(node(), GrainRef)
     end.
-            
+
 -spec enqueue_grain(erleans:grain_ref(), pid()) -> {await, reference(), pid()} | {drop, 0}.
 enqueue_grain(GrainRef, Pid) ->
     erleans_stateless_broker:start_link(GrainRef),
