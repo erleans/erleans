@@ -10,7 +10,7 @@ stages:
     steps:
       - type: checkout
 
-      - run: echo 127.0.0.1 fanon | tee -a /etc/hosts
+      - run: echo "127.0.0.1 fanon"|cat - /etc/hosts > /etc/hosts2 && mv /etc/hosts2 /etc/hosts
 
       - type: cache-restore
         key: erleans{{ checksum "rebar.lock" }}
