@@ -10,6 +10,7 @@ stages:
     steps:
       - type: checkout
 
+      - run: echo "`hostname -I`fanon"|cat - /etc/hosts > /etc/hosts2 && cat /etc/hosts2 > /etc/hosts
       - run: echo "127.0.0.1 fanon"|cat - /etc/hosts > /etc/hosts2 && cat /etc/hosts2 > /etc/hosts
 
       - type: cache-restore
