@@ -10,7 +10,7 @@ stages:
     steps:
       - type: checkout
 
-      - run: command: echo 127.0.0.1 fanon | sudo tee -a /etc/hosts
+      - run: echo 127.0.0.1 fanon | tee -a /etc/hosts
 
       - type: cache-restore
         key: erleans{{ checksum "rebar.lock" }}
@@ -22,6 +22,8 @@ stages:
         shell: /bin/bash
         command: |
             set -exu
+
+            epmd -daemon
 
             rebar3 compile
             rebar3 xref
