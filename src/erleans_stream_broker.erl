@@ -14,22 +14,22 @@
 %%% limitations under the License.
 %%%----------------------------------------------------------------------------
 
--module(erleans_stateless_broker).
+-module(erleans_stream_broker).
 
 %-behaviour(sbroker).
 
--export([start_link/1]).
+-export([start_link/0]).
 
 -export([init/1]).
 
 -include("erleans.hrl").
 
-start_link(Name) ->
-    sbroker:start_link(?broker(Name), ?MODULE, [], [{read_time_after, 16}]).
+start_link() ->
+    sbroker:start_link({local, ?STREAM_BROKER}, ?MODULE, [], [{read_time_after, 16}]).
 
 init(_) ->
     QueueSpec = {sbroker_timeout_queue, #{out => out,
-                                          timeout => 5000,
+                                          timeout => infinity,
                                           drop => drop_r,
                                           min => 0,
                                           max => 128}},

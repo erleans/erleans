@@ -1,4 +1,4 @@
-%%%--------------------------------------------------------------------
+%%%----------------------------------------------------------------------------
 %%% Copyright Space-Time Insight 2017. All Rights Reserved.
 %%%
 %%% Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,38 +12,39 @@
 %%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %%% See the License for the specific language governing permissions and
 %%% limitations under the License.
-%%%-----------------------------------------------------------------
+%%%----------------------------------------------------------------------------
 
 %%%-------------------------------------------------------------------
-%% @doc erleans public API
+%% @doc erleans stream agent supervisor.
 %% @end
 %%%-------------------------------------------------------------------
 
--module(erleans_app).
+-module(erleans_stream_agent_sup).
 
--behaviour(application).
+-behaviour(supervisor).
 
-%% Application callbacks
--export([start/2, stop/1]).
+-export([start_link/0]).
 
-%%====================================================================
-%% API
-%%====================================================================
+-export([init/1]).
 
-start(_StartType, _StartArgs) ->
-    init_providers(),
-    erleans_dns_peers:join(),
-    erleans_sup:start_link().
+-define(SERVER, ?MODULE).
 
-%%--------------------------------------------------------------------
-stop(_State) ->
-    erleans_cluster:leave(),
-    ok.
+-spec start_link() -> {ok, pid()}.
+start_link() ->
+    supervisor:start_link({local, ?SERVER}, ?MODULE, []).
+
+init([]) ->
+    NumAgents = erleans_config:get(num_stream_agents, erlang:system_info(schedulers)),
+    SupFlags = #{strategy => one_for_one,
+                 intensity => 5,
+                 period => 10},
+    ChildSpecs = [#{id => {erleans_stream_agent, N},
+                    start => {erleans_stream_agent, start_link, []},
+                    restart => permanent,
+                    type => worker,
+                    shutdown => 5000} || N <- lists:seq(1, NumAgents)],
+    {ok, {SupFlags, ChildSpecs}}.
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
-
-init_providers() ->
-    Providers = erleans_config:get(providers, []),
-    [Provider:init(Args) || {Provider, Args} <- Providers].
