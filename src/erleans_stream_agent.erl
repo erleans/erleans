@@ -60,9 +60,6 @@ handle_info({_, {go, _Ref, {Stream=#{stream_provider := StreamProvider,
 
     erleans_stream_manager:next(Stream, NewOffset),
     sbroker:async_ask_r(?STREAM_BROKER),
-    {noreply, State};
-handle_info(Other, State) ->
-    ct:pal("OTHER ~p", [Other]),
     {noreply, State}.
 
 code_change(_OldVsn, State, _Extra) ->
