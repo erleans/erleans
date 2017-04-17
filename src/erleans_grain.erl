@@ -1,7 +1,20 @@
-%%% ---------------------------------------------------------------------------
-%%% @author Tristan Sloughter <tristan.sloughter@spacetimeinsight.com>
-%%% @copyright 2016 Space-Time Insight <tristan.sloughter@spacetimeinsight.com>
+%%%----------------------------------------------------------------------------
+%%% Copyright Space-Time Insight 2017. All Rights Reserved.
 %%%
+%%% Licensed under the Apache License, Version 2.0 (the "License");
+%%% you may not use this file except in compliance with the License.
+%%% You may obtain a copy of the License at
+%%%
+%%%     http://www.apache.org/licenses/LICENSE-2.0
+%%%
+%%% Unless required by applicable law or agreed to in writing, software
+%%% distributed under the License is distributed on an "AS IS" BASIS,
+%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%%% See the License for the specific language governing permissions and
+%%% limitations under the License.
+%%%----------------------------------------------------------------------------
+
+%%% ---------------------------------------------------------------------------
 %%% @doc The Grain behavior provides a process that handles registering
 %%%      the grain in the cluster, loading grain state and saving grain state.
 %%%
@@ -49,7 +62,7 @@
 
 -callback handle_call(Msg :: term(), From :: pid(), CbState :: cb_state()) ->
     {reply, Reply :: term(), CbState :: cb_state()} |
-    {stop, Reply :: term(), Reason :: term()}.
+    {stop, Reason :: term(), Reply :: term(), CbState :: cb_state()}.
 
 -callback handle_cast(Msg :: term(), CbState :: cb_state()) ->
     {noreply, CbState :: cb_state()} |
@@ -63,7 +76,7 @@
 
 -callback eval_timer(CbState :: cb_state()) ->
     {ok, State :: cb_state()} |
-    {stop, Reason :: term()}.
+    {stop, Reason :: term(), CbState :: cb_state()}.
 
 -callback deactivate(CbState :: cb_state()) ->
     {ok, State :: cb_state()} |
@@ -106,6 +119,11 @@ start_link(GrainRef = #{placement := {stateless, _N}}) ->
 start_link(GrainRef) ->
     gen_server:start_link({via, erleans_pm, GrainRef}, ?MODULE, [GrainRef], []).
 
+subscribe(StreamProvider, Topic) ->
+    StreamRef = erleans:get_stream(StreamProvider, Topic),
+    MyGrain = get(grain_ref),
+    erleans_stream_manager:subscribe(StreamRef, MyGrain).
+
 -spec call(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 call(GrainRef, Request) ->
     call(GrainRef, Request, ?DEFAULT_TIMEOUT).
@@ -126,11 +144,6 @@ call(GrainRef, Request, Timeout) ->
 -spec cast(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 cast(GrainRef, Request) ->
     do_for_ref(GrainRef, fun(Pid) -> gen_server:cast(Pid, Request) end).
-
-subscribe(StreamProvider, Topic) ->
-    ConsumerGrain = erleans:get_grain(erleans_consumer_grain, {StreamProvider, Topic}),
-    MyGrain = get(grain_ref),
-    erleans_consumer_grain:subscribe(ConsumerGrain, MyGrain).
 
 do_for_ref(GrainRef=#{placement := {stateless, _N}}, Fun) ->
     case erleans_stateless:pick_grain(GrainRef) of
@@ -159,6 +172,8 @@ activate_grain(GrainRef=#{placement := Placement}) ->
             activate_stateless(GrainRef, N);
         stateless ->
             activate_stateless(GrainRef, erleans_config:get(max_stateless));
+        system_grain ->
+            activate_system_grain(GrainRef);
         prefer_local ->
             activate_local(GrainRef);
         random ->
@@ -172,11 +187,13 @@ activate_stateless(GrainRef, _N) ->
     erleans_grain_sup:start_child(node(), GrainRef).
 
 %% Activate on the local node
-activate_local(GrainRef=#{implementing_module := erleans_consumer_grain}) ->
-    %% erleans_consumer_grain is a system grain, meaning it is transient and not temporary
-    erleans_system_grain_sup:start_child(node(), GrainRef);
 activate_local(GrainRef) ->
     erleans_grain_sup:start_child(node(), GrainRef).
+
+activate_system_grain(GrainRef) ->
+    %% system grains are transient and not temporary
+    %% {ok, Node} = erleans_stream_manager:find_node(GrainRef),
+    erleans_system_grain_sup:start_child(node(), GrainRef).
 
 %% Activate the grain on a random node in the cluster
 activate_random(GrainRef) ->
@@ -216,7 +233,6 @@ init([GrainRef=#{id := Id,
                 true ->
                     {ok, CbState1, GrainOpts} = CbModule:init(GrainRef, CbState)
             end,
-
             {CbState2, ETag1} = verify_etag(CbModule, Id, Provider, ETag, CbState1),
             CreateTime = maps:get(create_time, GrainOpts, erlang:system_time(seconds)),
             LeaseTime = maps:get(lease_time, GrainOpts, erleans_config:get(default_lease_time)),
@@ -278,7 +294,7 @@ handle_info({timeout, _TRef, eval_timeout}, State=#state{cb_module=CbModule,
                     {noreply, State#state{cb_state=NewCbState,
                                           tref=NewTRef}, lease_time(LeaseTime, EvalTimeoutInterval)}
             end;
-        {stop, NewCbState} ->
+        {stop, _Reason, NewCbState} ->
             finalize_and_stop(State#state{cb_state=NewCbState})
     end;
 handle_info(Message, State=#state{cb_module=CbModule,
@@ -316,7 +332,7 @@ handle_reply(Reply, State=#state{ref=GrainRef}) ->
     maybe_enqueue_grain(GrainRef),
     handle_reply_(Reply, State).
 
-handle_reply_({stop, Reply, NewCbState}, State) ->
+handle_reply_({stop, _Reason, Reply, NewCbState}, State) ->
     {stop, Reason, NewState} = finalize_and_stop(State#state{cb_state=NewCbState}),
     {stop, Reason, Reply, NewState};
 handle_reply_({stop, NewCbState}, State) ->

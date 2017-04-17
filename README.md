@@ -17,11 +17,11 @@ Stateless grains have no restriction on the number of activations and do not per
 
 Stateless grain activations are pooled through [sbroker](https://github.com/fishcakez/sbroker/) while being counted by a [gproc](https://github.com/uwiger/gproc/) resource counter. This allows for the use of sbroker to select an activation if available and to create a new activation if none were available immediately and the number currently activated is less than the max allowed.
 
-### Reminders
+### Reminders (TODO)
 
 Timers that are associated with a grain, meaning if a grain is not active but a reminder for that grain ticks the grain is activated at that time and the reminder is delivered.
 
-### Observers
+### Observers (TODO)
 
 Processes can subscribe to grains to receive notifications for grain specific events. If a grain supports observers a group is created through `lasp_pg` that observers are added to and to which notifications are sent.
 
@@ -33,7 +33,7 @@ Streams have a provider type as well for providing a pluggable stream layer.
 
 ### Streams
 
-Grains can subscribe to streams and implement callbacks for handling records as they are published. Each stream is represented by a permanent system grain (meaning it does not deactivate) which manages subscriptions. Stream providers implement how to read from and publish to a given stream backend. On arrival of new events on the stream the grain makes a call to each subscriber with the new event, thus blocking for as long as the slowest subscriber takes to handle the event, before fetching any new events.
+Grains can subscribe to streams and implement callbacks for handling records as they are published. Each erleans node runs a configurable number of stream agents which are responsible for the actual fetching off a stream and forwarding to the subscribed grains. Stream providers implement how to read from and publish to a given stream backend. On arrival of new events on the stream the agents makes a call to each subscriber with the new event, thus blocking for as long as the slowest subscriber takes to handle the event, before fetching any new events.
 
 A grain must explicitly unsubscribe from a stream or it will continue to receive calls throughout its lifetime. This is because subscriptions are based on the grain reference, not the activation, so if a subscribed grain has deactivated it will be reactivated on the next event on the stream.
 
@@ -100,3 +100,5 @@ Because the tests rely on certain configurations of apps it is easiest to run th
 $ epmd -daemon
 $ rebar3 test
 ```
+
+Note that the distributed tests will only work on a node with hostname `fanon`. This will be easily avoidable in the next release of OTP but until need to figure out another work around. Running `rebar3 ci` will run all the tests but dist tests.

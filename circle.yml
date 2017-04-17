@@ -10,9 +10,6 @@ stages:
     steps:
       - type: checkout
 
-      - run: echo "`hostname -I`fanon"|cat - /etc/hosts > /etc/hosts2 && cat /etc/hosts2 > /etc/hosts
-      - run: echo "127.0.0.1 fanon"|cat - /etc/hosts > /etc/hosts2 && cat /etc/hosts2 > /etc/hosts
-
       - type: cache-restore
         key: erleans{{ checksum "rebar.lock" }}
 
@@ -29,7 +26,7 @@ stages:
             rebar3 compile
             rebar3 xref
             rebar3 dialyzer
-            rebar3 test
+            rebar3 ci
 
       - type: test-results-store
         path: ~/erleans/_build/test/logs/
