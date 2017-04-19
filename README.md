@@ -39,14 +39,14 @@ A grain must explicitly unsubscribe from a stream or it will continue to receive
 
 ## Differences from gen_server
 
-No starting or linking, a grain is activated when it is sent a request if a activiation is not currently running.
+No starting or linking, a grain is activated when it is sent a request if an activiation is not currently running.
 
 ### Grain Placement
 
 * `prefer_local`: If an activation does not exist this causes the new activation to be on the same node making the request.
 * `random`: Picks a random node to create any new activation of a grain.
-* `stateless`: Stateless grains are always local. If no local activation to the request exists one is created.
-* `{stateless, Max :: integer()}`: Allows for up to `Max` number of activations for a grain to exist per node. Meaning a new activation until `Max` exist on the node will be created for each request. Preferaby in the future we can have this only create a new activation if the current one is busy. Possibly through `sbroker`.
+* `stateless`: Stateless grains are always local. If no local activation to the request exists one is created up to a default maximum value.
+* `{stateless, Max :: integer()}`: Allows for up to `Max` number of activations for a grain to exist per node. A new activation, up until `Max` exist on the node, will be created for a request if an existing activation is not currently busy.
 
 ### Example
 
