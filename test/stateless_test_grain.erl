@@ -30,7 +30,7 @@ placement() ->
     {stateless, 3}.
 
 provider() ->
-    ets_provider.
+    ets.
 
 deactivated_counter(Ref) ->
     erleans_grain:call(Ref, deactivated_counter).

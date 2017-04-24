@@ -4,6 +4,12 @@ containerInfo:
   - image: tsloughter/erlang-git:19.3-2
     cmd: ["/bin/bash"]
 
+  - image: postgres:9
+    env:
+      - POSTGRES_USER=test
+      - POSTGRES_PASSWORD=test
+      - POSTGRES_DB=test
+
 stages:
   build:
     workDir: ~/erleans
@@ -27,6 +33,8 @@ stages:
             rebar3 xref
             rebar3 dialyzer
             rebar3 ci
+
+            rebar3 as pg ci
 
       - type: test-results-store
         path: ~/erleans/_build/test/logs/

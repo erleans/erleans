@@ -18,6 +18,7 @@ all() ->
     [simple_subscribe].
 
 init_per_suite(Config) ->
+    application:ensure_all_started(pgsql),
     application:load(erleans),
     application:set_env(erleans, default_lease_time, 60000),
     {ok, _} = application:ensure_all_started(erleans),
@@ -25,6 +26,7 @@ init_per_suite(Config) ->
 
 end_per_suite(_Config) ->
     application:stop(erleans),
+    application:stop(pgsql),
     ok.
 
 init_per_testcase(_, Config) ->

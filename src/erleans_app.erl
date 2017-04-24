@@ -31,9 +31,11 @@
 %%====================================================================
 
 start(_StartType, _StartArgs) ->
-    init_providers(),
+    Specs = init_providers(),
     erleans_dns_peers:join(),
-    erleans_sup:start_link().
+    {ok, Pid} = erleans_sup:start_link(Specs),
+    post_init_providers(),
+    {ok, Pid}.
 
 %%--------------------------------------------------------------------
 stop(_State) ->
@@ -46,4 +48,29 @@ stop(_State) ->
 
 init_providers() ->
     Providers = erleans_config:get(providers, []),
-    [Provider:init(Args) || {Provider, Args} <- Providers].
+    lists:foldl(fun({ProviderName, Args}, Acc) ->
+                    case init_provider(ProviderName, Args) of
+                        {pool, Args1} ->
+                            [#{id => {pool, ProviderName},
+                               start => {erleans_provider_pool_sup, start_link, [ProviderName, Args1]},
+                               restart => permanent,
+                               type => supervisor,
+                               shutdown => 5000} | Acc];
+                        ok ->
+                            Acc;
+                        {error, Reason} ->
+                            lager:error("failed to initialize provider ~s: reason=~p", [ProviderName, Reason]),
+                            Acc
+                    end
+                end, [], Providers).
+
+init_provider(ProviderName, Config) ->
+    Module = proplists:get_value(module, Config),
+    Module:init(ProviderName, Config).
+
+post_init_providers() ->
+    Providers = erleans_config:get(providers, []),
+    lists:foreach(fun({ProviderName, Config}) ->
+                      Module = proplists:get_value(module, Config),
+                      Module:post_init(ProviderName, Config)
+                  end, Providers).

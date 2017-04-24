@@ -26,12 +26,12 @@
 
 -include("erleans.hrl").
 
--type provider() :: module().
+-type provider() :: {module(), atom()}.
 
 -type grain_ref() :: #{implementing_module := module(),
                        id                  := term(),
                        placement           := placement(),
-                       provider            => provider()}.
+                       provider            => provider() | undefined}.
 
 -type sequence_token() :: any().
 -type stream_ref() :: #{topic           := term(),
@@ -51,14 +51,15 @@
 
 -spec get_grain(module(), any()) -> grain_ref().
 get_grain(ImplementingModule, Id) ->
+    Placement = placement(ImplementingModule),
     BaseGrainRef = #{implementing_module => ImplementingModule,
-                     placement => placement(ImplementingModule),
+                     placement => Placement,
                      id => Id},
-    case provider(ImplementingModule) of
-        undefined ->
-            BaseGrainRef;
-        Provider ->
-            BaseGrainRef#{provider => Provider}
+    case Placement of
+        {stateless, _} ->
+            BaseGrainRef#{provider => undefined};
+        _ ->
+            BaseGrainRef#{provider => provider(ImplementingModule)}
     end.
 
 -spec get_stream(module(), term()) -> stream_ref().
@@ -73,12 +74,20 @@ get_stream(StreamProvider, Topic, SequenceToken) ->
       fetch_interval => ?INITIAL_FETCH_INTERVAL}.
 
 -spec provider(module()) -> provider() | undefined.
-provider(Module) ->
-    fun_or_default(Module, provider, undefined).
+provider(CbModule) ->
+    Name = fun_or_default(CbModule, provider, erleans_config:get(default_provider)),
+    ProviderOptions = proplists:get_value(Name, erleans_config:get(providers, [])),
+    Module = proplists:get_value(module, ProviderOptions),
+    {Module, Name}.
 
 -spec placement(module()) -> placement().
 placement(Module) ->
-    fun_or_default(Module, placement, ?DEFAULT_PLACEMENT).
+    case fun_or_default(Module, placement, ?DEFAULT_PLACEMENT) of
+        stateless ->
+            {stateless, erleans_config:get(default_stateless_max, 5)};
+        Placement ->
+            Placement
+    end.
 
 %% If a function is exported by the module return the result of calling it
 %% else return the default.

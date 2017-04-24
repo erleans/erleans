@@ -26,13 +26,13 @@ placement() ->
     prefer_local.
 
 provider() ->
-    ets_provider.
+    erleans_config:get(default_provider).
 
 records_read(Ref) ->
     erleans_grain:call(Ref, records_read).
 
-init(_, State=#{}) ->
-    Topic = <<"some-topic">>,
+init(#{id := Id}, State=#{}) ->
+    Topic = <<Id/binary, "-some-topic">>,
     StreamProvider = test_stream,
     erleans_grain:subscribe(StreamProvider, Topic),
     {ok, State, #{life_time => infinity}}.

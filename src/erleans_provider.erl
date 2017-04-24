@@ -20,34 +20,27 @@
 %%% ---------------------------------------------------------------------------
 -module(erleans_provider).
 
--export([all/1,
-         insert/4,
-         replace/5]).
+-callback init(ProviderName :: atom(), Args :: list()) -> ok | {pool, Args :: list()}.
 
--callback init(list()) -> ok.
+-callback all(Type :: module(), ProviderName :: atom()) -> {ok, [any()]} | {error, any()}.
 
--callback all(Type :: module()) -> {ok, [any()]} | {error, any()}.
+-callback read(Type :: module(), ProviderName :: atom(), GrainRef :: erleans:grain_ref()) ->
+    {ok, State :: any(), ETag :: erleans:etag()} |
+    {error, not_found}.
 
--callback read(Type :: module(), GrainRef :: erleans:grain_ref()) -> {ok, State :: any(), ETag :: erleans:etag()} |
-                                                                     {error, not_found}.
+-callback insert(Type :: module(), ProviderName :: atom(), Id :: any(), State :: any(), ETag :: erleans:etag()) -> ok.
 
--callback insert(Type :: module(), Id :: any(), State :: any(), ETag :: erleans:etag()) -> ok.
-
--callback update(Type :: module(), Id :: any(), Update :: list(), ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
+-callback update(Type :: module(), ProviderName :: atom(), Id :: any(), Update :: list(),
+                 ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
     ok |
     {error, {bad_etag, erleans:etag(), erleans:etag()}} |
     {error, not_found}.
 
--callback replace(Type :: module(), Id :: any(), State :: any(), ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
+%% Not all backends are going to be able to provide per-field update functionality
+-optional_callbacks([update/6]).
+
+-callback replace(Type :: module(), ProviderName :: atom(), Id :: any(), State :: any(),
+                  ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
     ok |
     {error, {bad_etag, erleans:etag(), erleans:etag()}} |
     {error, not_found}.
-
-all(Type) ->
-    (Type:provider()):all(Type).
-
-insert(Type, Id, State, ETag) ->
-    (Type:provider()):insert(Type, Id, State, ETag).
-
-replace(Type, Id, State, ETag, NewETag) ->
-    (Type:provider()):replace(Type, Id, State, ETag, NewETag).

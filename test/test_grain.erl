@@ -29,7 +29,7 @@ placement() ->
     prefer_local.
 
 provider() ->
-    ets_provider.
+    erleans_config:get(default_provider).
 
 deactivated_counter(Ref) ->
     erleans_grain:call(Ref, deactivated_counter).

@@ -1,47 +1,49 @@
 -module(ets_provider).
 
--export([init/1,
-         all/1,
-         read/2,
-         insert/4,
-         replace/5,
-         update/5]).
+-behaviour(erleans_provider).
+
+-export([init/2,
+         post_init/2,
+         all/2,
+         read/3,
+         insert/5,
+         replace/6]).
 
 -define(TAB, ets_provider_tab).
 
-init(_Args) ->
+init(_ProviderName, _Args) ->
+    ok.
+
+post_init(_ProviderName, _Args) ->
     ets:new(?TAB, [public, named_table, set, {keypos, 1}]).
 
-all(Type) ->
+all(Type, _ProviderName) ->
     try
-        {ok, ets:match_object(?TAB, {'_', Type, '_'})}
+        {ok, ets:match_object(?TAB, {'_', Type, '_', '_'})}
     catch
         error:badarg ->
             {error, missing_table}
     end.
 
-read(Type, Id) ->
+read(Type, _ProviderName, Id) ->
     case ets:lookup(?TAB, Id) of
-        [{Id, Type, {Object, ETag}}] ->
+        [{Id, Type, ETag, Object}] ->
             {ok, Object, ETag};
         _ ->
             {error, not_found}
     end.
 
-insert(Type, Id, State, ETag) ->
-    true = ets:insert(?TAB, {Id, Type, {State, ETag}}),
+insert(Type, _ProviderName, Id, State, ETag) ->
+    true = ets:insert(?TAB, {Id, Type, ETag, State}),
     ok.
 
-replace(Type, Id, State, ETag, NewETag) ->
+replace(Type, _ProviderName, Id, State, ETag, NewETag) ->
     case ets:lookup(?TAB, Id) of
-        [{Id, Type, {_, E}}] when E =:= ETag ->
-            true = ets:insert(?TAB, {Id, Type, {State, NewETag}}),
+        [{Id, Type, E, _}] when E =:= ETag ->
+            true = ets:insert(?TAB, {Id, Type, NewETag, State}),
             ok;
-        [{Id, Type, {_, E}}] when E =/= ETag ->
-            {error, {bad_etag, E, ETag}};
+        [{Id, Type, E, _}] when E =/= ETag ->
+            {error, bad_etag};
         _ ->
             {error, not_found}
     end.
-
-update(_, _Id, _Updates, _ETag, _NewETag) ->
-    ok.
