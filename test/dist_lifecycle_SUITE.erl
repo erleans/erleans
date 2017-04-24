@@ -22,12 +22,9 @@ all() ->
 
 init_per_suite(Config) ->
     application:load(erleans),
-    code:ensure_loaded(stream_test_grain),
-    code:ensure_loaded(erleans_consumer_grain),
     application:load(partisan),
     application:load(lasp),
     application:set_env(partisan, peer_port, 10200),
-    code:ensure_loaded(test_grain),
     {ok, _} = application:ensure_all_started(erleans),
     start_nodes(),
     Config.
@@ -64,14 +61,11 @@ start_nodes([{Node, PeerPort} | T], Acc) ->
                                        {application, load, [partisan]},
                                        {application, set_env, [partisan, peer_port, PeerPort]},
                                        {application, load, [erleans]},
-                                       {code, ensure_loaded, [test_grain]},
                                        {application, ensure_all_started, [erleans]}]},
                                      {erl_flags, ErlFlags}]),
     ct:print("\e[32m Node ~p [OK] \e[0m", [HostNode]),
     net_kernel:connect(?NODE_A),
     rpc:call(?NODE_A, partisan_peer_service, join, [{?NODE_CT, "127.0.0.1", 10200}]),
-    rpc:call(?NODE_A, code, ensure_loaded, [stream_test_grain]),
-    rpc:call(?NODE_A, code, ensure_loaded, [erleans_consumer_grain]),
     ok = lasp_peer_service:join({?NODE_A, "127.0.0.1", PeerPort}),
     start_nodes(T, [HostNode | Acc]).
 

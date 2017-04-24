@@ -317,11 +317,10 @@ finalize_and_stop(State=#state{cb_module=CbModule,
                                cb_state=CbState,
                                etag=ETag}) ->
     %% Save to or delete from backing storage.
-    %% erleans_pm:unregister_name()
+    erleans_pm:unregister_name(Ref, self()),
     case CbModule:deactivate(CbState) of
         {save, NewCbState} ->
             NewETag = replace_state(CbModule, Provider, Id, NewCbState, ETag),
-            erleans_pm:unregister_name(Ref, self()),
             {stop, normal, State#state{cb_state=NewCbState,
                                        etag=NewETag}};
         {ok, NewCbState} ->

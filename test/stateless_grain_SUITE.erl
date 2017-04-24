@@ -18,8 +18,7 @@ all() ->
     [limits].
 
 init_per_suite(Config) ->
-    code:ensure_loaded(stateless_test_grain),
-    application:load(erleans),    
+    application:load(erleans),
     {ok, _} = application:ensure_all_started(erleans),
     Config.
 

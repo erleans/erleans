@@ -84,6 +84,8 @@ placement(Module) ->
 %% else return the default.
 -spec fun_or_default(module(), atom(), term()) -> term().
 fun_or_default(Module, FunctionName, Default) ->
+    %% load the module if it isn't already
+    erlang:function_exported(Module, module_info, 0) orelse code:ensure_loaded(Module),
     case erlang:function_exported(Module, FunctionName, 0) of
         true ->
             Module:FunctionName();
