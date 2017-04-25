@@ -13,6 +13,7 @@
     lasp_pg,
     gproc,
     sbroker,
+    hash_ring,
     erlware_commons
    ]},
   {modules, []},
