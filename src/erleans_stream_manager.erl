@@ -143,7 +143,7 @@ handle_info({_Stream, {drop, _SojournTime}}, State) ->
     {noreply, State};
 handle_info(update_streams, State=#state{ring=Ring}) ->
     lager:info("at=update_streams", []),
-    Streams = erleans_provider:all(erleans_stream),
+    {ok, Streams} = erleans_provider:all(erleans_stream),
 
     %% TODO: oh, so inefficient
     %sbroker:dirty_cancel(?STREAM_BROKER, ?STREAM_TAG),

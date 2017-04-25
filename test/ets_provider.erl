@@ -13,7 +13,12 @@ init(_Args) ->
     ets:new(?TAB, [public, named_table, set, {keypos, 1}]).
 
 all(Type) ->
-    ets:match_object(?TAB, {'_', Type, '_'}).
+    try
+        {ok, ets:match_object(?TAB, {'_', Type, '_'})}
+    catch
+        error:badarg ->
+            {error, missing_table}
+    end.
 
 read(Type, Id) ->
     case ets:lookup(?TAB, Id) of
