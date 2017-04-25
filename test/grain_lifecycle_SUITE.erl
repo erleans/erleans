@@ -18,8 +18,6 @@ all() ->
     [manual_start_stop, bad_etag_save, ephemeral_state].
 
 init_per_suite(Config) ->
-    code:ensure_loaded(test_grain),
-    code:ensure_loaded(test_ephemeral_state_grain),
     application:load(erleans),
     %% set a really low lease time for testing deactivations
     application:set_env(erleans, default_lease_time, 1),
@@ -92,6 +90,6 @@ ephemeral_state(_Config) ->
     %% and increment the activated counter
     ?assertEqual({ok, 2}, test_ephemeral_state_grain:activated_counter(Grain)),
     %% But ephemeral counter should be 0 again
-    ?assertEqual({ok, 0}, test_ephemeral_state_grain:ephemeral_counter(Grain)),
+    ?UNTIL({ok, 0} =:= test_ephemeral_state_grain:ephemeral_counter(Grain)),
 
     ok.
