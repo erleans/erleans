@@ -75,7 +75,7 @@ bad_etag_save(_Config) ->
     ok.
 
 ephemeral_state(_Config) ->
-    application:set_env(erleans, default_lease_time, 1),
+    application:set_env(erleans, default_lease_time, 2),
     Grain = erleans:get_grain(test_ephemeral_state_grain, <<"ephemeral-state-grain">>),
 
     ?assertEqual({ok, 1}, test_ephemeral_state_grain:activated_counter(Grain)),
