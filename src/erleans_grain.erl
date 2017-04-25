@@ -134,9 +134,8 @@ call(GrainRef, Request, Timeout) ->
                              try
                                  gen_server:call(Pid, Request, Timeout)
                              catch
-                                 exit:{{bad_etag, E1, E2}, _} ->
-                                     lager:error("at=grain_exit reason=bad_etag initial_etag=~p saved_etag=~p",
-                                                 [E1, E2]),
+                                 exit:{bad_etag, _} ->
+                                     lager:error("at=grain_exit reason=bad_etag", []),
                                      {exit, saved_etag_changed}
                              end
                          end).
@@ -208,13 +207,16 @@ init([GrainRef=#{id := Id,
     put(grain_ref, GrainRef),
     process_flag(trap_exit, true),
     {CbState, ETag} = case maps:find(provider, GrainRef) of
-                          {ok, Provider} ->
-                              case Provider:read(CbModule, Id) of
+                          {ok, Provider={ProviderModule, ProviderName}} ->
+                              case ProviderModule:read(CbModule, ProviderName, Id) of
                                   {ok, SavedState, E} ->
                                       {SavedState, E};
                                   _ ->
                                       {#{}, undefined}
                               end;
+                          {ok, undefined} ->
+                              Provider = undefined,
+                              {#{}, undefined};
                           error ->
                               Provider = undefined,
                               {#{}, undefined}
@@ -386,8 +388,8 @@ update_state(CbModule, Provider, Id, Updates, CbState, ETag) ->
     NewETag = etag(CbState),
     update_state_(CbModule, Provider, Id, Updates, ETag, NewETag).
 
-update_state_(CbModule, Provider, Id, Updates, ETag, NewETag) ->
-    case Provider:update(CbModule, Id, Updates, ETag, NewETag) of
+update_state_(CbModule, {Provider, ProviderName}, Id, Updates, ETag, NewETag) ->
+    case Provider:update(CbModule, ProviderName, Id, Updates, ETag, NewETag) of
         ok ->
             NewETag;
         {error, Reason} ->
@@ -402,8 +404,8 @@ replace_state(CbModule, Provider, Id, CbState, ETag) ->
     NewETag = etag(CbState),
     replace_state(CbModule, Provider, Id, CbState, ETag, NewETag).
 
-replace_state(CbModule, Provider, Id, State, ETag, NewETag) ->
-    case Provider:replace(CbModule, Id, State, ETag, NewETag) of
+replace_state(CbModule, {Provider, ProviderName}, Id, State, ETag, NewETag) ->
+    case Provider:replace(CbModule, ProviderName, Id, State, ETag, NewETag) of
         ok ->
             NewETag;
         {error, Reason} ->
@@ -421,14 +423,14 @@ maybe_enqueue_grain(GrainRef = #{placement := {stateless, _}}) ->
 maybe_enqueue_grain(_) ->
     ok.
 
-verify_etag(CbModule, Id, Provider, undefined, CbState=#{persistent := PState,
-                                                         ephemeral  := _}) ->
+verify_etag(CbModule, Id, {Provider, ProviderName}, undefined, CbState=#{persistent := PState,
+                                                                         ephemeral  := _}) ->
     ETag = etag(PState),
-    Provider:insert(CbModule, Id, PState, ETag),
+    Provider:insert(CbModule, ProviderName, Id, PState, ETag),
     {CbState, ETag};
-verify_etag(CbModule, Id, Provider, undefined, CbState) ->
+verify_etag(CbModule, Id, {Provider, ProviderName}, undefined, CbState) ->
     ETag = etag(CbState),
-    Provider:insert(CbModule, Id, CbState, ETag),
+    Provider:insert(CbModule, ProviderName, Id, CbState, ETag),
     {CbState, ETag};
 verify_etag(_, _, _, ETag, CbState) ->
     {CbState, ETag}.

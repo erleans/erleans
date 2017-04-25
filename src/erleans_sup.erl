@@ -23,17 +23,17 @@
 
 -behaviour(supervisor).
 
--export([start_link/0]).
+-export([start_link/1]).
 
 -export([init/1]).
 
 -define(SERVER, ?MODULE).
 
--spec start_link() -> {ok, pid()}.
-start_link() ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, []).
+-spec start_link(list()) -> {ok, pid()}.
+start_link(ProviderPoolSpecs) ->
+    supervisor:start_link({local, ?SERVER}, ?MODULE, [ProviderPoolSpecs]).
 
-init([]) ->
+init([ProviderPools]) ->
     SupFlags = #{strategy => one_for_one,
                  intensity => 0,
                  period => 1},
@@ -61,7 +61,7 @@ init([]) ->
                     start => {erleans_stream_manager, start_link, []},
                     restart => permanent,
                     type => worker,
-                    shutdown => 5000}],
+                    shutdown => 5000} | ProviderPools],
     {ok, {SupFlags, ChildSpecs}}.
 
 %%====================================================================

@@ -51,6 +51,7 @@
         {ring     :: hash_ring:ring() | undefined,
          streams  :: #{erleans:stream_ref() => sets:set(erleans:grain_ref())},
          monitors :: #{reference() => erleans:stream_ref()},
+         provider :: {module(), atom()},
          tref     :: reference() | undefined
         }).
 
@@ -70,15 +71,21 @@ find_node(Stream) ->
 
 init([]) ->
     ok = net_kernel:monitor_nodes(true, [{node_type, visible}]),
+    Provider = erleans_stream:provider(),
+    ProviderOptions = proplists:get_value(Provider, erleans_config:get(providers, [])),
+    Module = proplists:get_value(module, ProviderOptions),
+
     {ok, #state{streams=#{},
+                provider={Module, Provider},
                 monitors=#{}}, 0}.
 
 handle_call({next, StreamRef, SequenceToken}, _From={FromPid, _Tag}, State=#state{monitors=Monitors,
+                                                                                  provider=Provider,
                                                                                   streams=Streams}) ->
     lager:info("at=next stream_ref=~p sequence_token=~p", [StreamRef, SequenceToken]),
     Stream1 = StreamRef#{sequence_token => SequenceToken},
     {CurrentSubs, ETag} = maps:get(StreamRef, Streams, {sets:new(), undefined}),
-    NewETag = save(StreamRef, CurrentSubs, ETag),
+    NewETag = save(StreamRef, CurrentSubs, ETag, Provider),
     Streams1 = Streams#{Stream1 => {CurrentSubs, NewETag}},
 
     %% demonitor process that was handling this stream
@@ -91,7 +98,8 @@ handle_call({next, StreamRef, SequenceToken}, _From={FromPid, _Tag}, State=#stat
                             end, Monitors),
     {reply, ok, State#state{streams=Streams1,
                             monitors=Monitors1}};
-handle_call({subscribe, StreamRef, Grain}, _From, State=#state{streams=Streams}) ->
+handle_call({subscribe, StreamRef, Grain}, _From, State=#state{streams=Streams,
+                                                               provider=Provider}) ->
     lager:info("at=subscribe stream_ref=~p grain_ref=~p", [StreamRef, Grain]),
     {NewSubscribers, OldETag} = case maps:get(StreamRef, Streams, undefined) of
                                     undefined ->
@@ -99,10 +107,11 @@ handle_call({subscribe, StreamRef, Grain}, _From, State=#state{streams=Streams})
                                     {Subscribers, ETag} ->
                                         {sets:add_element(Grain, Subscribers), ETag}
                                 end,
-    NewETag = save(StreamRef, NewSubscribers, OldETag),
+    NewETag = save(StreamRef, NewSubscribers, OldETag, Provider),
     Streams1 = maps:put(StreamRef, {NewSubscribers, NewETag}, Streams),
     {reply, ok, State#state{streams=Streams1}};
-handle_call({unsubscribe, StreamRef, Grain}, _From, State=#state{streams=Streams}) ->
+handle_call({unsubscribe, StreamRef, Grain}, _From, State=#state{streams=Streams,
+                                                                 provider=Provider}) ->
     lager:info("at=unsubscribe stream_ref=~p grain_ref=~p", [StreamRef, Grain]),
     case maps:get(StreamRef, Streams, undefined) of
         undefined ->
@@ -110,7 +119,7 @@ handle_call({unsubscribe, StreamRef, Grain}, _From, State=#state{streams=Streams
             {reply, ok, State};
         {Subscribers, ETag} ->
             Subscribers1 = sets:del_element(Grain, Subscribers),
-            NewETag = save(StreamRef, Subscribers1, ETag),
+            NewETag = save(StreamRef, Subscribers1, ETag, Provider),
             Streams1 = maps:put(StreamRef, {Subscribers1, NewETag}, Streams),
             {reply, ok, State#state{streams=Streams1}}
     end;
@@ -141,13 +150,14 @@ handle_info({StreamRef, {go, _Ref, Pid, _RelativeTime, _SojournTime}}, State=#st
 handle_info({_Stream, {drop, _SojournTime}}, State) ->
     %% should never happen... we have an infinite timeout
     {noreply, State};
-handle_info(update_streams, State=#state{ring=Ring}) ->
+handle_info(update_streams, State=#state{ring=Ring,
+                                         provider={ProviderModule, Provider}}) ->
     lager:info("at=update_streams", []),
-    {ok, Streams} = erleans_provider:all(erleans_stream),
+    {ok, Streams} = ProviderModule:all(erleans_stream, Provider),
 
     %% TODO: oh, so inefficient
     %sbroker:dirty_cancel(?STREAM_BROKER, ?STREAM_TAG),
-    MyStreams = lists:foldl(fun({StreamRef, erleans_stream, {Subscribers, ETag}}, Acc) ->
+    MyStreams = lists:foldl(fun({StreamRef, erleans_stream, ETag, Subscribers}, Acc) ->
                                 enqueue_if_node(StreamRef, Subscribers, ETag, Ring, Acc)
                             end, #{}, Streams),
     {noreply, State#state{streams = MyStreams,
@@ -204,11 +214,11 @@ enqueue_if_node(StreamRef, Subscribers, ETag, Ring, Acc) ->
 enqueue_stream(StreamRef, Subscribers) ->
     sbroker:async_ask(?STREAM_BROKER, {StreamRef, Subscribers}, {self(), StreamRef}).
 
-save(Id, Value, undefined) ->
+save(Id, Value, undefined, {ProviderModule, ProviderName}) ->
     ETag = erlang:phash2(Value),
-    erleans_provider:insert(erleans_stream, Id, Value, ETag),
+    ProviderModule:insert(erleans_stream, ProviderName, Id, Value, ETag),
     ETag;
-save(Id, Value, OldETag) ->
+save(Id, Value, OldETag, {ProviderModule, ProviderName}) ->
     ETag = erlang:phash2(Value),
-    erleans_provider:replace(erleans_stream, Id, Value, OldETag, ETag),
+    ProviderModule:replace(erleans_stream, ProviderName, Id, Value, OldETag, ETag),
     ETag.

@@ -21,6 +21,7 @@ all() ->
     [manual_start_stop, simple_subscribe].
 
 init_per_suite(Config) ->
+    application:ensure_all_started(pgsql),
     application:load(erleans),
     application:load(partisan),
     application:load(lasp),
@@ -32,6 +33,7 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     {ok, _} = ct_slave:stop(a),
     application:stop(erleans),
+    application:stop(pgsql),
     application:stop(lasp_pg),
     application:stop(lasp),
     ok.
@@ -49,7 +51,12 @@ start_nodes() ->
 start_nodes([], Acc) ->
     Acc;
 start_nodes([{Node, PeerPort} | T], Acc) ->
-    ErlFlags = "-config ../../../../test/sys.config",
+    ErlFlags = case application:get_env(erleans, default_provider, ets) of
+                   ets ->
+                       "-config ../../../../test/sys.config";
+                   postgres ->
+                       "-config ../../../../test/postgres_sys.config"
+               end,
     CodePath = code:get_path(),
     {ok, HostNode} = ct_slave:start(Node,
                                     [{kill_if_fail, true},
@@ -61,6 +68,7 @@ start_nodes([{Node, PeerPort} | T], Acc) ->
                                        {application, load, [partisan]},
                                        {application, set_env, [partisan, peer_port, PeerPort]},
                                        {application, load, [erleans]},
+                                       {application, ensure_all_started, [pgsql]},
                                        {application, ensure_all_started, [erleans]}]},
                                      {erl_flags, ErlFlags}]),
     ct:print("\e[32m Node ~p [OK] \e[0m", [HostNode]),
@@ -93,6 +101,6 @@ manual_start_stop(_Config) ->
     ok.
 
 simple_subscribe(_Config) ->
-    Grain1 = erleans:get_grain(stream_test_grain, <<"simple-subscribe-grain1">>),
+    Grain1 = erleans:get_grain(stream_test_grain, <<"dist-simple-subscribe-grain1">>),
     ?UNTIL(stream_test_grain:records_read(Grain1) >= 3),
     ok.
