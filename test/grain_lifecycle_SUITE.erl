@@ -90,6 +90,6 @@ ephemeral_state(_Config) ->
     %% and increment the activated counter
     ?assertEqual({ok, 2}, test_ephemeral_state_grain:activated_counter(Grain)),
     %% But ephemeral counter should be 0 again
-    ?UNTIL({ok, 0} =:= test_ephemeral_state_grain:ephemeral_counter(Grain)),
+    ?assertEqual({ok, 0}, test_ephemeral_state_grain:ephemeral_counter(Grain)),
 
     ok.

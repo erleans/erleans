@@ -153,17 +153,23 @@ do_for_ref(GrainRef=#{placement := {stateless, _N}}, Fun) ->
             exit(timeout)
     end;
 do_for_ref(GrainRef, Fun) ->
-    case erleans_pm:whereis_name(GrainRef) of
-        Pid when is_pid(Pid) ->
-            Fun(Pid);
-        undefined ->
-            lager:info("start=~p", [GrainRef]),
-            case activate_grain(GrainRef) of
-                {ok, Pid} ->
-                    Fun(Pid);
-                _ ->
-                    exit(noproc)
-            end
+    try
+        case erleans_pm:whereis_name(GrainRef) of
+            Pid when is_pid(Pid) ->
+                Fun(Pid);
+            undefined ->
+                lager:info("start=~p", [GrainRef]),
+                case activate_grain(GrainRef) of
+                    {ok, Pid} ->
+                        Fun(Pid);
+                    _ ->
+                        exit(noproc)
+                end
+        end
+    catch
+        %% Retry only if the process deactivated
+        exit:{normal, _} ->
+            do_for_ref(GrainRef, Fun)
     end.
 
 activate_grain(GrainRef=#{placement := Placement}) ->
