@@ -14,8 +14,8 @@
 
 -include("test_utils.hrl").
 
--define(NODE_CT, ct@fanon).
--define(NODE_A, a@fanon).
+-define(NODE_CT, ct@cuff).
+-define(NODE_A, a@cuff).
 
 all() ->
     [manual_start_stop, simple_subscribe].
@@ -58,15 +58,17 @@ start_nodes([{Node, PeerPort} | T], Acc) ->
                                      {startup_timeout, 3000},
                                      {startup_functions,
                                       [{code, set_path, [CodePath]},
+                                       {lager, start, []},
                                        {application, load, [partisan]},
                                        {application, set_env, [partisan, peer_port, PeerPort]},
                                        {application, load, [erleans]},
                                        {application, ensure_all_started, [erleans]}]},
                                      {erl_flags, ErlFlags}]),
-    ct:print("\e[32m Node ~p [OK] \e[0m", [HostNode]),
     net_kernel:connect(?NODE_A),
-    rpc:call(?NODE_A, partisan_peer_service, join, [{?NODE_CT, "127.0.0.1", 10200}]),
+    ok = rpc:call(?NODE_A, partisan_peer_service, join, [{?NODE_CT, "127.0.0.1", 10200}]),
     ok = lasp_peer_service:join({?NODE_A, "127.0.0.1", PeerPort}),
+    ct:print("\e[32m Node ~p [OK] \e[0m", [HostNode]),
+
     start_nodes(T, [HostNode | Acc]).
 
 manual_start_stop(_Config) ->

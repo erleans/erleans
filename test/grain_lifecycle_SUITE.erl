@@ -81,7 +81,10 @@ ephemeral_state(_Config) ->
     ?assertEqual({ok, 1}, test_ephemeral_state_grain:activated_counter(Grain)),
     ?assertEqual({ok, 0}, test_ephemeral_state_grain:ephemeral_counter(Grain)),
 
+    ?UNTIL(erleans_pm:whereis_name(Grain) =/= undefined),
+
     ?assertEqual(ok, test_ephemeral_state_grain:increment_ephemeral_counter(Grain)),
+    ?assertEqual({ok, 1}, test_ephemeral_state_grain:ephemeral_counter(Grain)),
 
     %% with a leasetime of 1 second it should be gone now
     ?UNTIL(erleans_pm:whereis_name(Grain) =:= undefined),
