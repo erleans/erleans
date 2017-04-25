@@ -88,7 +88,7 @@ ephemeral_state(_Config) ->
 
     %% sending message by asking for the counter again will re-activate grain
     %% and increment the activated counter
-    ?assertEqual({ok, 2}, test_ephemeral_state_grain:activated_counter(Grain)),
+    ?assertMatch({ok, N} when N > 1, test_ephemeral_state_grain:activated_counter(Grain)),
     %% But ephemeral counter should be 0 again
     ?assertEqual({ok, 0}, test_ephemeral_state_grain:ephemeral_counter(Grain)),
 
