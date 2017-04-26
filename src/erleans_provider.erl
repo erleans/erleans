@@ -41,9 +41,6 @@
 
 -callback post_init(ProviderName :: atom(), Args :: list()) -> ok.
 
-%% post_init is only needed when init returns {pools, ...}
--optional_callbacks([post_init/2]).
-
 -callback replace(Type :: module(), ProviderName :: atom(), Id :: any(), State :: any(),
                   ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
     ok |
