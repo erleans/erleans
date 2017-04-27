@@ -39,6 +39,8 @@
 %% Not all backends are going to be able to provide per-field update functionality
 -optional_callbacks([update/6]).
 
+-callback post_init(ProviderName :: atom(), Args :: list()) -> ok.
+
 -callback replace(Type :: module(), ProviderName :: atom(), Id :: any(), State :: any(),
                   ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
     ok |
