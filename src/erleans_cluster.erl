@@ -16,8 +16,14 @@
 
 -module(erleans_cluster).
 
--export([join/3,
+-export([join/2,
+         join/3,
          leave/0]).
+
+-include_lib("partisan/include/partisan.hrl").
+
+join(Name, Host) ->
+    join(Name, Host, ?PEER_PORT).
 
 join(Name, Host, PartisanPort) ->
     partisan_peer_service:join({Name, Host, PartisanPort}).
