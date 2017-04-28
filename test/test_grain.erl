@@ -20,7 +20,6 @@
          handle_call/3,
          handle_cast/2,
          handle_info/2,
-         eval_timer/1,
          deactivate/1]).
 
 -include("erleans.hrl").
@@ -66,9 +65,6 @@ handle_cast(_, State) ->
 
 handle_info(_, State) ->
     {noreply, State}.
-
-eval_timer(State) ->
-    {ok, State}.
 
 deactivate(State=#{deactivated_counter := D}) ->
     {save, State#{deactivated_counter => D+1}};
