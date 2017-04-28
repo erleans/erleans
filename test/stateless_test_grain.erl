@@ -19,9 +19,6 @@
          handle_call/3,
          handle_cast/2,
          handle_info/2,
-         eval_timer/1,
-         change_id/1,
-         change_id/2,
          deactivate/1]).
 
 -include("erleans.hrl").
@@ -63,21 +60,10 @@ handle_cast(_, State) ->
 handle_info(_, State) ->
     {noreply, State}.
 
-eval_timer(State) ->
-    {ok, State}.
-
 deactivate(State=#{deactivated_counter := D}) ->
     {save, State#{deactivated_counter => D+1}};
 deactivate(State) ->
     {save, State#{deactivated_counter => 1}}.
-
-change_id(#{change_id := ChangeId}) ->
-    ChangeId;
-change_id(_) ->
-    0.
-
-change_id(ChangeId, State=#{}) ->
-    State#{change_id => ChangeId}.
 
 %%%===================================================================
 %%% Internal functions

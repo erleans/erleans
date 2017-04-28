@@ -74,10 +74,6 @@
     {save, CbState :: cb_state()} |
     {save, Updates :: maps:map(), CbState :: cb_state()}.
 
--callback eval_timer(CbState :: cb_state()) ->
-    {ok, State :: cb_state()} |
-    {stop, Reason :: term(), CbState :: cb_state()}.
-
 -callback deactivate(CbState :: cb_state()) ->
     {ok, State :: cb_state()} |
     {save, State :: cb_state()} |
@@ -94,19 +90,16 @@
          etag                  :: integer(),
          provider              :: term(),
          ref                   :: erleans:grain_ref(),
-         tref                  :: reference(),
          create_time           :: non_neg_integer(),
-         lease_time            :: non_neg_integer() | infinity,
-         life_time             :: non_neg_integer() | infinity,
-         eval_timeout_interval :: non_neg_integer()
+         lease_time            :: non_neg_integer() | infinity
        }).
 
 -type opts() :: #{ref    => binary(),
                   etag   => integer(),
 
                   lease_time => non_neg_integer() | infinity,
-                  life_time => non_neg_integer() | infinity,
-                  eval_timeout_interval => non_neg_integer() | infinity}.
+                  life_time => non_neg_integer() | infinity
+                 }.
 
 -export_types([opts/0]).
 
@@ -177,8 +170,6 @@ activate_grain(GrainRef=#{placement := Placement}) ->
             activate_stateless(GrainRef, N);
         stateless ->
             activate_stateless(GrainRef, erleans_config:get(max_stateless));
-        system_grain ->
-            activate_system_grain(GrainRef);
         prefer_local ->
             activate_local(GrainRef);
         random ->
@@ -194,11 +185,6 @@ activate_stateless(GrainRef, _N) ->
 %% Activate on the local node
 activate_local(GrainRef) ->
     erleans_grain_sup:start_child(node(), GrainRef).
-
-activate_system_grain(GrainRef) ->
-    %% system grains are transient and not temporary
-    %% {ok, Node} = erleans_stream_manager:find_node(GrainRef),
-    erleans_system_grain_sup:start_child(node(), GrainRef).
 
 %% Activate the grain on a random node in the cluster
 activate_random(GrainRef) ->
@@ -244,9 +230,6 @@ init([GrainRef=#{id := Id,
             {CbState2, ETag1} = verify_etag(CbModule, Id, Provider, ETag, CbState1),
             CreateTime = maps:get(create_time, GrainOpts, erlang:system_time(seconds)),
             LeaseTime = maps:get(lease_time, GrainOpts, erleans_config:get(default_lease_time)),
-            LifeTime = maps:get(life_time, GrainOpts, erleans_config:get(default_life_time)),
-            EvalTimeoutInterval = maps:get(eval_timeout_interval, GrainOpts, erleans_config:get(default_eval_interval)),
-            TRef = erlang:start_timer(EvalTimeoutInterval, self(), eval_timeout),
             State = #state{cb_module   = CbModule,
                            cb_state    = CbState2,
 
@@ -254,11 +237,9 @@ init([GrainRef=#{id := Id,
                            etag        = ETag1,
                            provider    = Provider,
                            ref         = GrainRef,
-                           tref        = TRef,
                            create_time = CreateTime,
-                           lease_time  = LeaseTime,
-                           life_time   = LifeTime,
-                           eval_timeout_interval=EvalTimeoutInterval},
+                           lease_time  = LeaseTime
+                          },
             {ok, State, lease_time(LeaseTime)}
     end.
 
@@ -279,32 +260,6 @@ handle_info({erleans_grain_tag, {go, _, _, _, _}}, State) ->
 handle_info({erleans_grain_tag, {drop, _}}, State) ->
     %% dropped from queue
     {noreply, State};
-handle_info({timeout, _TRef, eval_timeout}, State=#state{cb_module=CbModule,
-                                                         cb_state=CbState,
-                                                         eval_timeout_interval=EvalTimeoutInterval,
-                                                         lease_time=LeaseTime,
-                                                         life_time=LifeTime,
-                                                         create_time=CreateTime,
-                                                         tref=TRef}) ->
-    erlang:cancel_timer(TRef),
-    case CbModule:eval_timer(CbState) of
-        {ok, NewCbState} when LifeTime =:= 0 ->
-            NewTRef = erlang:start_timer(EvalTimeoutInterval, self(), eval_timeout),
-            {noreply, State#state{cb_state=NewCbState,
-                                  tref=NewTRef}, lease_time(LeaseTime, EvalTimeoutInterval)};
-        {ok, NewCbState} ->
-            Now = erlang:system_time(seconds),
-            case Now - CreateTime of
-                N when N >= LifeTime ->
-                    finalize_and_stop(State#state{cb_state=NewCbState});
-                _ ->
-                    NewTRef = erlang:start_timer(EvalTimeoutInterval, self(), eval_timeout),
-                    {noreply, State#state{cb_state=NewCbState,
-                                          tref=NewTRef}, lease_time(LeaseTime, EvalTimeoutInterval)}
-            end;
-        {stop, _Reason, NewCbState} ->
-            finalize_and_stop(State#state{cb_state=NewCbState})
-    end;
 handle_info(Message, State=#state{cb_module=CbModule,
                                   cb_state=CbState}) ->
     handle_reply(CbModule:handle_info(Message, CbState), State).
@@ -312,8 +267,13 @@ handle_info(Message, State=#state{cb_module=CbModule,
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-terminate(Reason, _State) ->
+terminate(deactivated, _State) ->
+    ok;
+terminate(Reason, State) ->
     lager:info("at=terminate reason=~p", [Reason]),
+    %% supervisor is terminating, node is probably shutting down.
+    %% deactivate the grain so it can clean up and save if needed
+    _ = finalize_and_stop(State),
     ok.
 
 %% Internal functions
@@ -329,10 +289,10 @@ finalize_and_stop(State=#state{cb_module=CbModule,
     case CbModule:deactivate(CbState) of
         {save, NewCbState} ->
             NewETag = replace_state(CbModule, Provider, Id, NewCbState, ETag),
-            {stop, normal, State#state{cb_state=NewCbState,
+            {stop, deactivated, State#state{cb_state=NewCbState,
                                        etag=NewETag}};
         {ok, NewCbState} ->
-            {stop, normal, State#state{cb_state=NewCbState}}
+            {stop, deactivated, State#state{cb_state=NewCbState}}
     end.
 
 handle_reply(Reply, State=#state{ref=GrainRef}) ->
@@ -420,9 +380,6 @@ replace_state(CbModule, {Provider, ProviderName}, Id, State, ETag, NewETag) ->
 
 lease_time(0) -> infinity;
 lease_time(X) -> X.
-
-lease_time(0, _) -> infinity;
-lease_time(L, I) -> L - I.
 
 maybe_enqueue_grain(GrainRef = #{placement := {stateless, _}}) ->
     erleans_stateless:enqueue_grain(GrainRef, self());

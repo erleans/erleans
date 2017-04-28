@@ -23,12 +23,8 @@
 
 -behaviour(application).
 
-%% Application callbacks
--export([start/2, stop/1]).
-
-%%====================================================================
-%% API
-%%====================================================================
+-export([start/2,
+         stop/1]).
 
 start(_StartType, _StartArgs) ->
     Specs = init_providers(),
@@ -37,14 +33,11 @@ start(_StartType, _StartArgs) ->
     post_init_providers(),
     {ok, Pid}.
 
-%%--------------------------------------------------------------------
 stop(_State) ->
     erleans_cluster:leave(),
     ok.
 
-%%====================================================================
 %% Internal functions
-%%====================================================================
 
 init_providers() ->
     Providers = erleans_config:get(providers, []),
