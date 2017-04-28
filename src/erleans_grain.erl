@@ -305,8 +305,13 @@ handle_info(Message, State=#state{cb_module=CbModule,
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-terminate(Reason, _State) ->
+terminate(deactivated, _State) ->
+    ok;
+terminate(Reason, State) ->
     lager:info("at=terminate reason=~p", [Reason]),
+    %% supervisor is terminating, node is probably shutting down.
+    %% deactivate the grain so it can clean up and save if needed
+    _ = finalize_and_stop(State),
     ok.
 
 %% Internal functions
@@ -322,10 +327,10 @@ finalize_and_stop(State=#state{cb_module=CbModule,
     case CbModule:deactivate(CbState) of
         {save, NewCbState} ->
             NewETag = replace_state(CbModule, Provider, Id, NewCbState, ETag),
-            {stop, normal, State#state{cb_state=NewCbState,
+            {stop, deactivated, State#state{cb_state=NewCbState,
                                        etag=NewETag}};
         {ok, NewCbState} ->
-            {stop, normal, State#state{cb_state=NewCbState}}
+            {stop, deactivated, State#state{cb_state=NewCbState}}
     end.
 
 handle_reply(Reply, State=#state{ref=GrainRef}) ->
