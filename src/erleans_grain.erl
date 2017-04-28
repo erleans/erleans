@@ -177,8 +177,6 @@ activate_grain(GrainRef=#{placement := Placement}) ->
             activate_stateless(GrainRef, N);
         stateless ->
             activate_stateless(GrainRef, erleans_config:get(max_stateless));
-        system_grain ->
-            activate_system_grain(GrainRef);
         prefer_local ->
             activate_local(GrainRef);
         random ->
@@ -194,11 +192,6 @@ activate_stateless(GrainRef, _N) ->
 %% Activate on the local node
 activate_local(GrainRef) ->
     erleans_grain_sup:start_child(node(), GrainRef).
-
-activate_system_grain(GrainRef) ->
-    %% system grains are transient and not temporary
-    %% {ok, Node} = erleans_stream_manager:find_node(GrainRef),
-    erleans_system_grain_sup:start_child(node(), GrainRef).
 
 %% Activate the grain on a random node in the cluster
 activate_random(GrainRef) ->
