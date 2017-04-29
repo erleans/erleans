@@ -73,12 +73,32 @@ get_stream(StreamProvider, Topic, SequenceToken) ->
       sequence_token => SequenceToken,
       fetch_interval => ?INITIAL_FETCH_INTERVAL}.
 
--spec provider(module()) -> provider() | undefined.
+-spec provider(module()) -> provider().
 provider(CbModule) ->
-    Name = fun_or_default(CbModule, provider, erleans_config:get(default_provider)),
-    ProviderOptions = proplists:get_value(Name, erleans_config:get(providers, [])),
-    Module = proplists:get_value(module, ProviderOptions),
-    {Module, Name}.
+    case fun_or_default(CbModule, provider, undefined) of
+        undefined ->
+            undefined;
+        Name ->
+            find_provider_config(Name)
+    end.
+
+-spec find_provider_config(atom()) -> provider().
+find_provider_config(default) ->
+    %% throw an exception if default_provider is set to default, which would cause an infinite loop
+    case erleans_config:get(default_provider) of
+        default ->
+            throw(bad_default_provider_config);
+        _ ->
+            find_provider_config(erleans_config:get(default_provider))
+    end;
+find_provider_config(Name) ->
+    case proplists:get_value(Name, erleans_config:get(providers, [])) of
+        undefined ->
+            throw({missing_provider_config, Name});
+        ProviderOptions ->
+            Module = proplists:get_value(module, ProviderOptions),
+            {Module, Name}
+    end.
 
 -spec placement(module()) -> placement().
 placement(Module) ->

@@ -47,6 +47,7 @@
 -include("erleans.hrl").
 
 -define(DEFAULT_TIMEOUT, 5000).
+-define(NO_PROVIDER_ERROR, no_provider_configured).
 
 -type cb_state() :: term() | #{persistent := term(),
                                ephemeral  := term()}.
@@ -269,6 +270,12 @@ code_change(_OldVsn, State, _Extra) ->
 
 terminate(deactivated, _State) ->
     ok;
+terminate(?NO_PROVIDER_ERROR, #state{cb_module=CbModule,
+                                     id=Id}) ->
+    lager:error("attempted to save without storage provider configured: id=~p cb_module=~p", [Id, CbModule]),
+    %% We do not want to call the deactivate callback here because this
+    %% is not a deactivation, it is a hard crash.
+    ok;
 terminate(Reason, State) ->
     lager:info("at=terminate reason=~p", [Reason]),
     %% supervisor is terminating, node is probably shutting down.
@@ -290,7 +297,7 @@ finalize_and_stop(State=#state{cb_module=CbModule,
         {save, NewCbState} ->
             NewETag = replace_state(CbModule, Provider, Id, NewCbState, ETag),
             {stop, deactivated, State#state{cb_state=NewCbState,
-                                       etag=NewETag}};
+                                            etag=NewETag}};
         {ok, NewCbState} ->
             {stop, deactivated, State#state{cb_state=NewCbState}}
     end.
@@ -346,6 +353,8 @@ handle_reply_({save, NewCbState}, State=#state{id=Id,
 
 %% Saving requires an etag so it can verify no other process has updated the row before us.
 %% The actor needs to crash in the case that the etag found in the table has changed.
+update_state(_CbModule, undefined, _Id, _Updates, _CbState, _ETag) ->
+    exit(?NO_PROVIDER_ERROR);
 update_state(CbModule, Provider, Id, Updates, #{persistent := PState,
                                                 ephemeral  := _}, ETag) ->
     NewETag = etag(PState),
@@ -362,6 +371,8 @@ update_state_(CbModule, {Provider, ProviderName}, Id, Updates, ETag, NewETag) ->
             exit(Reason)
     end.
 
+replace_state(_CbModule, undefined, _Id, _CbState, _ETag) ->
+    exit(?NO_PROVIDER_ERROR);
 replace_state(CbModule, Provider, Id, #{persistent := PState,
                                         ephemeral  := _}, ETag) ->
     NewETag = etag(PState),
