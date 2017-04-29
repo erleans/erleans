@@ -75,6 +75,8 @@ init([]) ->
     partisan_peer_service_events:add_sup_callback(fun(Members) ->
                                                       Self ! {update, Members}
                                                   end),
+
+    %% storage provider for stream metadata
     Provider = erleans_stream:provider(),
     ProviderOptions = proplists:get_value(Provider, erleans_config:get(providers, [])),
     Module = proplists:get_value(module, ProviderOptions),

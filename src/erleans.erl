@@ -35,7 +35,8 @@
 
 -type sequence_token() :: any().
 -type stream_ref() :: #{topic           := term(),
-                        stream_provider := module(),
+                        stream_module   := module(),
+                        stream_provider := atom(),
                         sequence_token  := sequence_token(),
                         fetch_interval  := integer()}.
 
@@ -68,7 +69,10 @@ get_stream(StreamProvider, Topic) ->
 
 -spec get_stream(module(), term(), sequence_token()) -> stream_ref().
 get_stream(StreamProvider, Topic, SequenceToken) ->
+    StreamConfig = proplists:get_value(StreamProvider, erleans_config:get(stream_providers, [])),
+    StreamModule = proplists:get_value(module, StreamConfig),
     #{topic => Topic,
+      stream_module => StreamModule,
       stream_provider => StreamProvider,
       sequence_token => SequenceToken,
       fetch_interval => ?INITIAL_FETCH_INTERVAL}.
