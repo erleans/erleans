@@ -70,7 +70,11 @@ find_node(Stream) ->
     gen_server:call(?MODULE, {find_node, Stream}).
 
 init([]) ->
-    ok = net_kernel:monitor_nodes(true, [{node_type, visible}]),
+    %% callback for changes to cluster membership
+    Self = self(),
+    partisan_peer_service_events:add_sup_callback(fun(Members) ->
+                                                      Self ! {update, Members}
+                                                  end),
     Provider = erleans_stream:provider(),
     ProviderOptions = proplists:get_value(Provider, erleans_config:get(providers, [])),
     Module = proplists:get_value(module, ProviderOptions),
@@ -162,22 +166,17 @@ handle_info(update_streams, State=#state{ring=Ring,
                             end, #{}, Streams),
     {noreply, State#state{streams = MyStreams,
                           tref = undefined}};
-handle_info({nodeup, Node, _}, State=#state{ring=Ring,
-                                            tref=TRef}) ->
-    erlang:cancel_timer(TRef, []),
+handle_info({update, Membership}, State=#state{tref=TRef}) ->
+    cancel_timer(TRef),
     TRef1 = erlang:send_after(?TIMEOUT, self(), update_streams, []),
-    {noreply, State#state{ring = hash_ring:add_node(hash_ring_node:make(Node), Ring),
-                          tref = TRef1}};
-handle_info({nodedown, Node, _}, State=#state{ring=Ring,
-                                              tref=TRef}) ->
-    erlang:cancel_timer(TRef, []),
-    TRef1 = erlang:send_after(?TIMEOUT, self(), update_streams, []),
-    {noreply, State#state{ring = hash_ring:remove_node(Node, Ring),
+    %% convert partisan membership to list of erlang nodes
+    Members = [P || {P, _, _} <- sets:to_list(state_orset:query(Membership))],
+    NewRing = make_ring(Members),
+    {noreply, State#state{ring = NewRing,
                           tref = TRef1}};
 handle_info(timeout, State) ->
     TRef = erlang:send_after(?TIMEOUT, self(), update_streams, []),
-    Members = hash_ring:list_to_nodes([node() | nodes()]),
-    Ring = hash_ring:make(Members, [{module, hash_ring_dynamic}]),
+    Ring = make_ring(),
     {noreply, State#state{ring = Ring,
                           tref = TRef}}.
 
@@ -188,6 +187,20 @@ terminate(_Reason, _State) ->
     ok.
 
 %% Internal functions
+
+cancel_timer(undefined) ->
+    ok;
+cancel_timer(TRef) ->
+    erlang:cancel_timer(TRef, []).
+
+make_ring() ->
+    {ok, Nodes} = partisan_peer_service:members(),
+    make_ring(Nodes).
+
+make_ring(Nodes) ->
+    lager:info("current_members=~p", [Nodes]),
+    Members = hash_ring:list_to_nodes(Nodes),
+    hash_ring:make(Members, [{module, hash_ring_static}]).
 
 handle_down_agent(MonitorRef, Monitors, Streams) ->
     {Stream, Monitors1} = maps:take(MonitorRef, Monitors),

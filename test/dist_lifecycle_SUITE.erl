@@ -26,6 +26,10 @@ init_per_suite(Config) ->
     application:load(partisan),
     application:load(lasp),
     application:set_env(partisan, peer_port, 10200),
+
+    %% lower gossip interval of partisan membership so it triggers more often in tests
+    application:set_env(partisan, gossip_interval, 100),
+
     {ok, _} = application:ensure_all_started(erleans),
     start_nodes(),
     Config.
@@ -66,6 +70,7 @@ start_nodes([{Node, PeerPort} | T], Acc) ->
                                      {startup_functions,
                                       [{code, set_path, [CodePath]},
                                        {application, load, [partisan]},
+                                       {application, set_env, [partisan, gossip_interval, 100]},
                                        {application, set_env, [partisan, peer_port, PeerPort]},
                                        {application, load, [erleans]},
                                        {application, ensure_all_started, [pgsql]},
@@ -93,6 +98,7 @@ manual_start_stop(_Config) ->
 
     ?assertEqual({ok, ?NODE_CT}, rpc:call(?NODE_A, test_grain, node, [Grain1])),
     ?assertEqual({ok, 1}, rpc:call(?NODE_A, test_grain, activated_counter, [Grain2])),
+
     timer:sleep(200),
 
     ?assertEqual({ok, ?NODE_A}, rpc:call(?NODE_A, test_grain, node, [Grain2])),
