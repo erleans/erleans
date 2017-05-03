@@ -1,4 +1,4 @@
-erleans [![CircleCI](https://circleci.com/gh/GOFactory/erleans.svg?style=svg)](https://circleci.com/gh/GOFactory/erleans)
+erleans [![CircleCI](https://circleci.com/gh/SpaceTime-IoT/erleans.svg?style=svg)](https://circleci.com/gh/SpaceTime-IoT/erleans)
 =====
 
 ## Components
