@@ -15,7 +15,7 @@
 -include("test_utils.hrl").
 
 all() ->
-    [manual_start_stop, bad_etag_save, ephemeral_state].
+    [manual_start_stop, bad_etag_save, ephemeral_state, no_provider_grain].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgsql),
@@ -94,5 +94,16 @@ ephemeral_state(_Config) ->
     ?assertMatch({ok, N} when N > 1, test_ephemeral_state_grain:activated_counter(Grain)),
     %% But ephemeral counter should be 0 again
     ?assertEqual({ok, 0}, test_ephemeral_state_grain:ephemeral_counter(Grain)),
+
+    ok.
+
+no_provider_grain(_Config) ->
+    application:set_env(erleans, default_lease_time, 60),
+    Grain = erleans:get_grain(no_provider_test_grain, <<"no_provider">>),
+
+    ?assertEqual(hello, no_provider_test_grain:hello(Grain)),
+
+    %% attempt to save state through erleans_grain without a provider configured
+    ?assertExit({no_provider_configured, _}, no_provider_test_grain:save(Grain)),
 
     ok.
