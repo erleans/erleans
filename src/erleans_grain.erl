@@ -161,7 +161,8 @@ do_for_ref(GrainRef, Fun) ->
         end
     catch
         %% Retry only if the process deactivated
-        exit:{normal, _} ->
+        exit:{Reason, _} when Reason =:= {shutdown, deactivated}
+                            ; Reason =:= normal ->
             do_for_ref(GrainRef, Fun)
     end.
 
@@ -268,7 +269,7 @@ handle_info(Message, State=#state{cb_module=CbModule,
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-terminate(deactivated, _State) ->
+terminate({shutdown, deactivated}, _State) ->
     ok;
 terminate(?NO_PROVIDER_ERROR, #state{cb_module=CbModule,
                                      id=Id}) ->
@@ -296,10 +297,10 @@ finalize_and_stop(State=#state{cb_module=CbModule,
     case CbModule:deactivate(CbState) of
         {save, NewCbState} ->
             NewETag = replace_state(CbModule, Provider, Id, NewCbState, ETag),
-            {stop, deactivated, State#state{cb_state=NewCbState,
-                                            etag=NewETag}};
+            {stop, {shutdown, deactivated}, State#state{cb_state=NewCbState,
+                                                        etag=NewETag}};
         {ok, NewCbState} ->
-            {stop, deactivated, State#state{cb_state=NewCbState}}
+            {stop, {shutdown, deactivated}, State#state{cb_state=NewCbState}}
     end.
 
 handle_reply(Reply, State=#state{ref=GrainRef}) ->

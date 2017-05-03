@@ -46,10 +46,10 @@ handle_call(_, _, State) ->
 handle_cast(_, State) ->
     {noreply, State}.
 
-handle_info({_, {go, _Ref, {Stream=#{stream_provider := StreamProvider,
+handle_info({_, {go, _Ref, {Stream=#{stream_module   := StreamModule,
                                      topic           := Topic,
                                      sequence_token  := Offset}, Subscribers}, _RelativeTime, _SojournTime}}, State) ->
-    case StreamProvider:fetch([{Topic, Offset}]) of
+    case StreamModule:fetch([{Topic, Offset}]) of
         [] ->
             NewOffset = Offset;
         [{Topic, {NewOffset, RecordSet}}] ->
