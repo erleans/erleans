@@ -12,10 +12,11 @@
 -define(TAB, ets_provider_tab).
 
 init(_ProviderName, _Args) ->
+    ets:new(?TAB, [public, named_table, set, {keypos, 1}]),
     ok.
 
 post_init(_ProviderName, _Args) ->
-    ets:new(?TAB, [public, named_table, set, {keypos, 1}]).
+    ok.
 
 all(Type, _ProviderName) ->
     try

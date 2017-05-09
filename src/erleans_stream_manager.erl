@@ -29,7 +29,7 @@
 -export([start_link/0,
          next/2,
          subscribe/2,
-         find_node/1]).
+         update_streams/1]).
 
 -export([init/1,
          handle_call/3,
@@ -48,8 +48,7 @@
 -define(TIMEOUT, 10000). %% check what streams to be running after 10 seconds of a node change
 
 -record(state,
-        {ring     :: hash_ring:ring() | undefined,
-         streams  :: #{erleans:stream_ref() => sets:set(erleans:grain_ref())},
+        {streams  :: #{erleans:stream_ref() => sets:set(erleans:grain_ref())},
          monitors :: #{reference() => erleans:stream_ref()},
          provider :: {module(), atom()},
          tref     :: reference() | undefined
@@ -63,19 +62,13 @@ next(StreamRef, SequenceToken) ->
     gen_server:call(?MODULE, {next, StreamRef, SequenceToken}).
 
 subscribe(StreamRef, GrainRef) ->
-    {ok, Node} = find_node(StreamRef),
+    Node = erleans_partitions:find_node(StreamRef),
     gen_server:call({?MODULE, Node}, {subscribe, StreamRef, GrainRef}).
 
-find_node(Stream) ->
-    gen_server:call(?MODULE, {find_node, Stream}).
+update_streams(Range) ->
+    gen_server:call(?MODULE, {update_streams, Range}).
 
 init([]) ->
-    %% callback for changes to cluster membership
-    Self = self(),
-    partisan_peer_service_events:add_sup_callback(fun(Members) ->
-                                                      Self ! {update, Members}
-                                                  end),
-
     %% storage provider for stream metadata
     Provider = erleans_stream:provider(),
     ProviderOptions = proplists:get_value(Provider, erleans_config:get(providers, [])),
@@ -113,6 +106,7 @@ handle_call({subscribe, StreamRef, Grain}, _From, State=#state{streams=Streams,
                                     {Subscribers, ETag} ->
                                         {sets:add_element(Grain, Subscribers), ETag}
                                 end,
+    enqueue_stream(StreamRef, NewSubscribers),
     NewETag = save(StreamRef, NewSubscribers, OldETag, Provider),
     Streams1 = maps:put(StreamRef, {NewSubscribers, NewETag}, Streams),
     {reply, ok, State#state{streams=Streams1}};
@@ -129,17 +123,13 @@ handle_call({unsubscribe, StreamRef, Grain}, _From, State=#state{streams=Streams
             Streams1 = maps:put(StreamRef, {Subscribers1, NewETag}, Streams),
             {reply, ok, State#state{streams=Streams1}}
     end;
-handle_call({find_node, StreamRef}, From, State=#state{ring=Ring}) ->
-    spawn(fun() ->
-              case hash_ring:find_node(StreamRef, Ring) of
-                  {ok, RingNode} ->
-                      Node = hash_ring_node:get_key(RingNode),
-                      gen_server:reply(From, {ok, Node});
-                  error ->
-                      gen_server:reply(From, error)
-              end
-          end),
-    {noreply, State}.
+handle_call({update_streams, Range}, _From, State=#state{provider={ProviderModule, Provider}}) ->
+    {ok, Streams} = ProviderModule:all(erleans_stream, Provider),
+    MyStreams = lists:foldl(fun({StreamRef, erleans_stream, ETag, Subscribers}, Acc) ->
+                                enqueue_if_node(StreamRef, Subscribers, ETag, Range, Acc)
+                            end, #{}, Streams),
+    {reply, ok, State#state{streams = MyStreams,
+                            tref = undefined}}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -156,31 +146,20 @@ handle_info({StreamRef, {go, _Ref, Pid, _RelativeTime, _SojournTime}}, State=#st
 handle_info({_Stream, {drop, _SojournTime}}, State) ->
     %% should never happen... we have an infinite timeout
     {noreply, State};
-handle_info(update_streams, State=#state{ring=Ring,
-                                         provider={ProviderModule, Provider}}) ->
+handle_info(update_streams, State=#state{provider={ProviderModule, Provider}}) ->
     lager:info("at=update_streams", []),
     {ok, Streams} = ProviderModule:all(erleans_stream, Provider),
-
+    Range = erleans_partitions:get_range(),
     %% TODO: oh, so inefficient
     %sbroker:dirty_cancel(?STREAM_BROKER, ?STREAM_TAG),
     MyStreams = lists:foldl(fun({StreamRef, erleans_stream, ETag, Subscribers}, Acc) ->
-                                enqueue_if_node(StreamRef, Subscribers, ETag, Ring, Acc)
+                                enqueue_if_node(StreamRef, Subscribers, ETag, Range, Acc)
                             end, #{}, Streams),
     {noreply, State#state{streams = MyStreams,
                           tref = undefined}};
-handle_info({update, Membership}, State=#state{tref=TRef}) ->
-    cancel_timer(TRef),
-    TRef1 = erlang:send_after(?TIMEOUT, self(), update_streams, []),
-    %% convert partisan membership to list of erlang nodes
-    Members = [P || {P, _, _} <- sets:to_list(state_orset:query(Membership))],
-    NewRing = make_ring(Members),
-    {noreply, State#state{ring = NewRing,
-                          tref = TRef1}};
 handle_info(timeout, State) ->
-    TRef = erlang:send_after(?TIMEOUT, self(), update_streams, []),
-    Ring = make_ring(),
-    {noreply, State#state{ring = Ring,
-                          tref = TRef}}.
+    self() ! update_streams,
+    {noreply, State}.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -190,19 +169,21 @@ terminate(_Reason, _State) ->
 
 %% Internal functions
 
-cancel_timer(undefined) ->
-    ok;
-cancel_timer(TRef) ->
-    erlang:cancel_timer(TRef, []).
+%% cancel_timer(undefined) ->
+%%     ok;
+%% cancel_timer(TRef) ->
+%%     erlang:cancel_timer(TRef, []).
 
-make_ring() ->
-    {ok, Nodes} = partisan_peer_service:members(),
-    make_ring(Nodes).
+enqueue_if_node(StreamRef, Subscribers, ETag, {Start, Stop}, Acc) ->
+    case jch:ch(erlang:phash2(StreamRef), erleans_config:get(num_partitions)) of
+        Partition when Partition >= Start
+                     , Partition =< Stop ->
+            enqueue_stream(StreamRef, Subscribers),
+            Acc#{StreamRef => {Subscribers, ETag}};
+        _ ->
+            Acc
+    end.
 
-make_ring(Nodes) ->
-    lager:info("current_members=~p", [Nodes]),
-    Members = hash_ring:list_to_nodes(Nodes),
-    hash_ring:make(Members, [{module, hash_ring_static}]).
 
 handle_down_agent(MonitorRef, Monitors, Streams) ->
     {Stream, Monitors1} = maps:take(MonitorRef, Monitors),
@@ -210,20 +191,6 @@ handle_down_agent(MonitorRef, Monitors, Streams) ->
     lager:info("at=DOWN stream_ref=~p", [Stream]),
     enqueue_stream(Stream, Subscribers),
     Monitors1.
-
-enqueue_if_node(StreamRef, Subscribers, ETag, Ring, Acc) ->
-    case hash_ring:find_node(StreamRef, Ring) of
-        {ok, RingNode} ->
-            case hash_ring_node:get_key(RingNode) of
-                Key when Key =:= node() ->
-                    enqueue_stream(StreamRef, Subscribers),
-                    Acc#{StreamRef => {Subscribers, ETag}};
-                _ ->
-                    Acc
-            end;
-        _ ->
-            Acc
-    end.
 
 -spec enqueue_stream(erleans:stream_ref(), sets:set(erleans:grain_ref())) -> {await, any(), pid()} | {drop, 0}.
 enqueue_stream(StreamRef, Subscribers) ->
