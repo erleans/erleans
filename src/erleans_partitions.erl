@@ -31,6 +31,7 @@
 
 -export([start_link/0,
          find_node/1,
+         add_handler/2,
          get_range/0]).
 
 -export([init/1,
@@ -46,7 +47,8 @@
 
 -record(state, {range          :: range() | undefined,
                 num_partitions :: integer(),
-                node_ranges    :: [{range(), node()}]}).
+                node_ranges    :: [{range(), node()}],
+                to_notify      :: #{atom() => pid() | atom()}}).
 
 -define(CH(Item, Partitions), jch:ch(Item, Partitions)).
 
@@ -54,13 +56,18 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec find_node(term()) -> {ok, node()}.
+-spec find_node(term()) -> {integer(), node()}.
 find_node(Item) ->
     gen_server:call(?MODULE, {find_node, Item}).
 
 -spec get_range() -> range().
 get_range() ->
     gen_server:call(?MODULE, get_range).
+
+-spec add_handler(atom(), pid() | atom()) -> ok.
+add_handler(Name, Pid) ->
+    gen_server:call(?MODULE, {add_handler, Name, Pid}).
+
 
 init([]) ->
     %% callback for changes to cluster membership
@@ -69,7 +76,9 @@ init([]) ->
                                                       Self ! {update, Membership}
                                                   end),
     NumPartitions = erleans_config:get(num_partitions),
-    {ok, #state{num_partitions=NumPartitions}, 0}.
+    {ok, #state{num_partitions=NumPartitions,
+                node_ranges=[],
+                to_notify=#{}}, 0}.
 
 handle_call({find_node, Item}, From, State=#state{num_partitions=NumPartitions,
                                                   node_ranges=Ranges}) ->
@@ -81,44 +90,27 @@ handle_call({find_node, Item}, From, State=#state{num_partitions=NumPartitions,
                                             (_) ->
                                              false
                                          end, Ranges),
-              gen_server:reply(From, Node)
+              gen_server:reply(From, {Partition, Node})
           end),
     {noreply, State};
 handle_call(get_range, _From, State=#state{range=Range}) ->
-    {reply, Range, State}.
+    {reply, Range, State};
+handle_call({add_handler, Name, Pid}, _From, State=#state{to_notify=ToNotify}) ->
+    {reply, ok, State#state{to_notify=ToNotify#{Name => Pid}}}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({update, Membership}, State=#state{num_partitions=NumPartitions}) ->
+handle_info({update, Membership}, State=#state{num_partitions=NumPartitions,
+                                               to_notify=ToNotify}) ->
     MembersList = lists:usort(sets:to_list(state_orset:query(Membership))),
-    Length = length(MembersList),
-    {_, NodeRanges} = lists:foldl(fun({Node, _, _}, {Pos, Acc}) ->
-                                      Range = calc_partition_range(Pos, Length, NumPartitions),
-                                      {Pos+1, [{Range, Node} | Acc]}
-                                  end, {0, []}, MembersList),
-
-    case whereis(erleans_stream_manager) of
-        Pid when is_pid(Pid) -> Pid ! update_streams;
-        _ -> ok
-    end,
-    {Range, _} = lists:keyfind(node(), 2, NodeRanges),
+    {Range, NodeRanges} = update_ranges(MembersList, NumPartitions, ToNotify),
     {noreply, State#state{range=Range,
                           node_ranges=NodeRanges}};
-handle_info(timeout, State=#state{num_partitions=NumPartitions}) ->
+handle_info(timeout, State=#state{num_partitions=NumPartitions,
+                                  to_notify=ToNotify}) ->
     {ok, MembersList} = partisan_peer_service:members(),
-    Length = length(MembersList),
-    {_, NodeRanges} = lists:foldl(fun(Node, {Pos, Acc}) ->
-                                      Range = calc_partition_range(Pos, Length, NumPartitions),
-                                      {Pos+1, [{Range, Node} | Acc]}
-                                  end, {0, []}, MembersList),
-
-    case whereis(erleans_stream_manager) of
-        Pid when is_pid(Pid) -> Pid ! update_streams;
-        _ -> ok
-    end,
-
-    {Range, _} = lists:keyfind(node(), 2, NodeRanges),
+    {Range, NodeRanges} = update_ranges(MembersList, NumPartitions, ToNotify),
     {noreply, State#state{range=Range,
                           node_ranges=NodeRanges}}.
 
@@ -129,6 +121,23 @@ terminate(_Reason, _State) ->
     ok.
 
 %% Internal functions
+
+update_ranges(MembersList, NumPartitions, ToNotify) ->
+    Length = length(MembersList),
+    {_, NodeRanges} = lists:foldl(fun({Node, _, _}, {Pos, Acc}) ->
+                                      Range = calc_partition_range(Pos, Length, NumPartitions),
+                                      {Pos+1, [{Range, Node} | Acc]};
+                                     (Node, {Pos, Acc}) ->
+                                      Range = calc_partition_range(Pos, Length, NumPartitions),
+                                      {Pos+1, [{Range, Node} | Acc]}
+                                  end, {0, []}, MembersList),
+
+    maps:map(fun(_, Pid) ->
+                 Pid ! update_streams
+             end, ToNotify),
+
+    {Range, _} = lists:keyfind(node(), 2, NodeRanges),
+    {Range, NodeRanges}.
 
 %% Find the range of partitions this node position is responsible for
 -spec calc_partition_range(integer(), integer(), integer()) -> {integer(), integer()}.

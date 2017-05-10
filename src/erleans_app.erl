@@ -31,6 +31,11 @@ start(_StartType, _StartArgs) ->
     erleans_dns_peers:join(),
     {ok, Pid} = erleans_sup:start_link(Specs),
     post_init_providers(),
+
+    %% streams manager needs the providers fully initialized first
+    %% so we have to do it after post_init_providers
+    erleans_sup:start_partitions_sup(),
+
     {ok, Pid}.
 
 stop(_State) ->

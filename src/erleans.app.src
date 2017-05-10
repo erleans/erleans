@@ -13,8 +13,8 @@
     lasp_pg,
     gproc,
     sbroker,
-    hash_ring,
     jch,
+    eql,
     erlware_commons
    ]},
   {modules, []},
@@ -26,5 +26,5 @@
 
   {maintainers, ["Tristan Sloughter", "Bryan Hughes", "Evan Vigil-McClanahan", "Andrew Varner"]},
   {licenses, ["Apache 2"]},
-  {links, ["https://github.com/SpaceTime-IoT/erleans"]}
+  {links, [{"GitHub", "https://github.com/SpaceTime-IoT/erleans"}]}
  ]}.
