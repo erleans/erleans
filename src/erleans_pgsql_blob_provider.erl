@@ -146,7 +146,7 @@ replace_(Id, Type, RefHash, OldGrainETag, NewGrainETag, GrainState, C) ->
 load_queries(Module, File) ->
     ets:new(Module, [named_table, set, {read_concurrency, true}]),
     {ok, Queries} = eql:compile(File),
-    [ets:insert(Module, Query) || Query <- Queries].
+    ets:insert(Module, Queries).
 
 query(Name) ->
     case ets:lookup(?MODULE, Name) of

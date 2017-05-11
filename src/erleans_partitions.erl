@@ -72,9 +72,9 @@ add_handler(Name, Pid) ->
 init([]) ->
     %% callback for changes to cluster membership
     Self = self(),
-    partisan_peer_service_events:add_sup_callback(fun(Membership) ->
-                                                      Self ! {update, Membership}
-                                                  end),
+    ok = partisan_peer_service_events:add_sup_callback(fun(Membership) ->
+                                                           Self ! {update, Membership}
+                                                       end),
     NumPartitions = erleans_config:get(num_partitions),
     {ok, #state{num_partitions=NumPartitions,
                 node_ranges=[],
@@ -112,7 +112,15 @@ handle_info(timeout, State=#state{num_partitions=NumPartitions,
     {ok, MembersList} = partisan_peer_service:members(),
     {Range, NodeRanges} = update_ranges(MembersList, NumPartitions, ToNotify),
     {noreply, State#state{range=Range,
-                          node_ranges=NodeRanges}}.
+                          node_ranges=NodeRanges}};
+handle_info({gen_event_EXIT, _, _}, State) ->
+    %% there is no reason the event handler should be removed
+    %% so if we receive this message attempt to add it back
+    Self = self(),
+    ok = partisan_peer_service_events:add_sup_callback(fun(Membership) ->
+                                                           Self ! {update, Membership}
+                                                       end),
+    {noreply, State}.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
@@ -132,11 +140,12 @@ update_ranges(MembersList, NumPartitions, ToNotify) ->
                                       {Pos+1, [{Range, Node} | Acc]}
                                   end, {0, []}, MembersList),
 
+    {Range, _} = lists:keyfind(node(), 2, NodeRanges),
+
     maps:map(fun(_, Pid) ->
-                 Pid ! update_streams
+                 Pid ! {update_streams, Range}
              end, ToNotify),
 
-    {Range, _} = lists:keyfind(node(), 2, NodeRanges),
     {Range, NodeRanges}.
 
 %% Find the range of partitions this node position is responsible for

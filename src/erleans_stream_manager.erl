@@ -147,14 +147,14 @@ handle_info({StreamRef, {go, _Ref, Pid, _RelativeTime, _SojournTime}}, State=#st
 handle_info({_Stream, {drop, _SojournTime}}, State) ->
     %% should never happen... we have an infinite timeout
     {noreply, State};
-handle_info(update_streams, State=#state{provider=Provider}) ->
+handle_info({update_streams, Range}, State=#state{provider=Provider}) ->
     lager:info("at=update_streams", []),
     %sbroker:dirty_cancel(?STREAM_BROKER, ?STREAM_TAG),
-    Range = erleans_partitions:get_range(),
     MyStreams = enqueue_streams(Provider, Range),
     {noreply, State#state{streams = MyStreams}};
 handle_info(timeout, State) ->
-    self() ! update_streams,
+    Range = erleans_partitions:get_range(),
+    self() ! {update_streams, Range},
     {noreply, State}.
 
 code_change(_OldVsn, State, _Extra) ->
