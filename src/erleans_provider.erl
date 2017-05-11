@@ -22,13 +22,22 @@
 
 -callback init(ProviderName :: atom(), Args :: list()) -> ok | {pool, Args :: list()}.
 
+-callback post_init(ProviderName :: atom(), Args :: list()) -> ok.
+
 -callback all(Type :: module(), ProviderName :: atom()) -> {ok, [any()]} | {error, any()}.
 
 -callback read(Type :: module(), ProviderName :: atom(), GrainRef :: erleans:grain_ref()) ->
     {ok, State :: any(), ETag :: erleans:etag()} |
     {error, not_found}.
 
+-callback read_by_hash(Type :: module(), ProviderName :: atom(), GrainRef :: erleans:grain_ref()) ->
+    {ok,  [{GrainRef :: erleans:grain_ref(), Type :: module(), ETag :: erleans:etag(), State :: any()}]} |
+    {error, not_found}.
+
 -callback insert(Type :: module(), ProviderName :: atom(), Id :: any(), State :: any(), ETag :: erleans:etag()) -> ok.
+
+-callback insert(Type :: module(), ProviderName :: atom(), Id :: any(), Hash :: integer(),
+                 State :: any(), ETag :: erleans:etag()) -> ok.
 
 -callback update(Type :: module(), ProviderName :: atom(), Id :: any(), Update :: list(),
                  ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
@@ -39,10 +48,14 @@
 %% Not all backends are going to be able to provide per-field update functionality
 -optional_callbacks([update/6]).
 
--callback post_init(ProviderName :: atom(), Args :: list()) -> ok.
-
 -callback replace(Type :: module(), ProviderName :: atom(), Id :: any(), State :: any(),
                   ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
+    ok |
+    {error, {bad_etag, erleans:etag(), erleans:etag()}} |
+    {error, not_found}.
+
+-callback replace(Type :: module(), ProviderName :: atom(), Id :: any(), Hash :: integer(),
+                  State :: any(), ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
     ok |
     {error, {bad_etag, erleans:etag(), erleans:etag()}} |
     {error, not_found}.
