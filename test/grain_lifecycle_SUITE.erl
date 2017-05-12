@@ -15,7 +15,8 @@
 -include("test_utils.hrl").
 
 all() ->
-    [manual_start_stop, bad_etag_save, ephemeral_state, no_provider_grain].
+    [manual_start_stop, bad_etag_save, ephemeral_state, no_provider_grain,
+     request_types].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgsql),
@@ -107,3 +108,54 @@ no_provider_grain(_Config) ->
     ?assertExit({no_provider_configured, _}, no_provider_test_grain:save(Grain)),
 
     ok.
+
+request_types(_Config) ->
+    application:set_env(erleans, default_lease_time, 20),
+    Grain = erleans:get_grain(test_grain, <<"request-types-grain">>),
+
+    ?assertEqual({ok, node()}, test_grain:node(Grain)),
+
+    GrainPid = (fun Loop(0) ->
+                        error(waaah);
+                    Loop(N) ->
+                        case erleans_pm:whereis_name(Grain) of
+                            Pid when is_pid(Pid) -> Pid;
+                            _ ->
+                                timer:sleep(1),
+                                Loop(N - 1)
+                        end
+                end)(200),
+
+    %% spawn a requestor which will keep the grain alive
+    spawn(fun () ->
+                  [begin
+                       timer:sleep(12),
+                       {ok, Ct} = test_grain:activated_counter(Grain),
+                       ct:pal("~p ~p", [erlang:monotonic_time(milli_seconds), Ct])
+                   end || _ <- lists:seq(1,4)]  % ~48 ms
+          end),
+    timer:sleep(40),
+
+    %% make sure we still have the same grain
+    ?assertEqual(GrainPid, erleans_pm:whereis_name(Grain)),
+    ?assert(is_process_alive(GrainPid)),
+
+    ?assertEqual({ok, node()}, test_grain:node(Grain)),
+    timer:sleep(10),
+
+    Pinger =
+        spawn(fun () ->
+                      [begin
+                           timer:sleep(12),
+                           {ok, Ct} = test_grain:activated_counter(GrainPid),
+                           ct:pal("~p ~p", [erlang:monotonic_time(milli_seconds), Ct])
+                       end || _ <- lists:seq(1,4)]  % ~48 ms
+              end),
+    timer:sleep(50),
+
+    %% this should have died at some point because of a badmatch after the lease expires
+    ?assertEqual(false, is_process_alive(Pinger)),
+    ?assertEqual(false, is_process_alive(GrainPid)),
+
+    ok.
+

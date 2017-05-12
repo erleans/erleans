@@ -92,7 +92,8 @@
          provider              :: term(),
          ref                   :: erleans:grain_ref(),
          create_time           :: non_neg_integer(),
-         lease_time            :: non_neg_integer() | infinity
+         lease_time            :: non_neg_integer() | infinity,
+         lease_timer           :: reference() | undefined
        }).
 
 -type opts() :: #{ref    => binary(),
@@ -124,9 +125,10 @@ call(GrainRef, Request) ->
 
 -spec call(GrainRef :: erleans:grain_ref(), Request :: term(), non_neg_integer() | infinity) -> Reply :: term().
 call(GrainRef, Request, Timeout) ->
+    ReqType = req_type(GrainRef),
     do_for_ref(GrainRef, fun(Pid) ->
                              try
-                                 gen_server:call(Pid, Request, Timeout)
+                                 gen_server:call(Pid, {ReqType, Request}, Timeout)
                              catch
                                  exit:{bad_etag, _} ->
                                      lager:error("at=grain_exit reason=bad_etag", []),
@@ -136,8 +138,14 @@ call(GrainRef, Request, Timeout) ->
 
 -spec cast(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 cast(GrainRef, Request) ->
-    do_for_ref(GrainRef, fun(Pid) -> gen_server:cast(Pid, Request) end).
+    ReqType = req_type(GrainRef),
+    do_for_ref(GrainRef, fun(Pid) -> gen_server:cast(Pid, {ReqType, Request}) end).
 
+req_type(GrainRef) when is_map(GrainRef) -> refresh_lease;
+req_type(GrainRef) when is_pid(GrainRef) -> leave_lease.
+
+do_for_ref(GrainPid, Fun) when is_pid(GrainPid) ->
+    Fun(GrainPid);
 do_for_ref(GrainRef=#{placement := {stateless, _N}}, Fun) ->
     case erleans_stateless:pick_grain(GrainRef) of
         {ok, Pid} when is_pid(Pid) ->
@@ -242,21 +250,30 @@ init([GrainRef=#{id := Id,
                            provider    = Provider,
                            ref         = GrainRef,
                            create_time = CreateTime,
-                           lease_time  = LeaseTime
+                           lease_time  = LeaseTime,
+                           lease_timer = lease_timer(LeaseTime, undefined)
                           },
-            {ok, State, lease_time(LeaseTime)}
+            {ok, State}
     end.
 
-handle_call(Msg, From, State=#state{cb_module=CbModule,
-                                    cb_state=CbState}) ->
-    handle_reply(CbModule:handle_call(Msg, From, CbState), State).
+handle_call({ReqType, Msg}, From, State=#state{cb_module=CbModule,
+                                               cb_state=CbState,
+                                               lease_time=LeaseTime,
+                                               lease_timer=LeaseTimer}) ->
+    handle_reply(CbModule:handle_call(Msg, From, CbState), upd_lease(ReqType, LeaseTime, LeaseTimer, State)).
 
-handle_cast(Msg, State=#state{cb_module=CbModule,
-                              cb_state=CbState}) ->
-    handle_reply(CbModule:handle_cast(Msg, CbState), State).
+handle_cast({ReqType, Msg}, State=#state{cb_module=CbModule,
+                                         cb_state=CbState,
+                                         lease_time=LeaseTime,
+                                         lease_timer=LeaseTimer}) ->
+    handle_reply(CbModule:handle_cast(Msg, CbState), upd_lease(ReqType, LeaseTime, LeaseTimer, State)).
 
-handle_info(timeout, State) ->
-    %% Lease expired
+upd_lease(leave_lease, _, _, State) ->
+    State;
+upd_lease(refresh_lease, LeaseTime, LeaseTimer, State) ->
+    State#state{lease_timer=lease_timer(LeaseTime, LeaseTimer)}.
+
+handle_info(lease_expiry, State) ->
     finalize_and_stop(State);
 handle_info({erleans_grain_tag, {go, _, _, _, _}}, State) ->
     %% checked out
@@ -314,45 +331,37 @@ handle_reply_({stop, _Reason, Reply, NewCbState}, State) ->
     {stop, Reason, Reply, NewState};
 handle_reply_({stop, NewCbState}, State) ->
     finalize_and_stop(State#state{cb_state=NewCbState});
-handle_reply_({reply, Reply, NewCbState}, State=#state{lease_time=LeaseTime}) ->
-    {reply, Reply, State#state{cb_state=NewCbState}, lease_time(LeaseTime)};
-handle_reply_({noreply, NewCbState}, State=#state{lease_time=LeaseTime}) ->
-    {noreply, State#state{cb_state=NewCbState}, lease_time(LeaseTime)};
+handle_reply_({reply, Reply, NewCbState}, State) ->
+    {reply, Reply, State#state{cb_state=NewCbState}};
+handle_reply_({noreply, NewCbState}, State) ->
+    {noreply, State#state{cb_state=NewCbState}};
 handle_reply_({save_reply, Reply, Updates, NewCbState}, State=#state{id=Id,
                                                                      cb_module=CbModule,
-                                                                     lease_time=LeaseTime,
                                                                      provider=Provider,
                                                                      etag=ETag})
   when is_map(Updates) ->
     %% Saving requires an etag so it can verify no other process has updated the row before us.
     %% The actor needs to crash in the case that the etag found in the table has chnaged.
     NewETag = update_state(CbModule, Provider, Id, Updates, NewCbState, ETag),
-    {reply, Reply, State#state{cb_state=NewCbState,
-                               etag=NewETag}, lease_time(LeaseTime)};
+    {reply, Reply, State#state{cb_state=NewCbState, etag=NewETag}};
 handle_reply_({save_reply, Reply, NewCbState}, State=#state{id=Id,
                                                             cb_module=CbModule,
                                                             provider=Provider,
-                                                            lease_time=LeaseTime,
                                                             etag=ETag}) ->
     NewETag = replace_state(CbModule, Provider, Id, NewCbState, ETag),
-    {reply, Reply, State#state{cb_state=NewCbState,
-                               etag=NewETag}, lease_time(LeaseTime)};
+    {reply, Reply, State#state{cb_state=NewCbState, etag=NewETag}};
 handle_reply_({save, Updates, NewCbState}, State=#state{id=Id,
                                                         cb_module=CbModule,
-                                                        lease_time=LeaseTime,
                                                         provider=Provider,
                                                         etag=ETag}) when is_map(Updates) ->
     NewETag = update_state(CbModule, Provider, Id, Updates, NewCbState, ETag),
-    {noreply, State#state{cb_state=NewCbState,
-                          etag=NewETag}, lease_time(LeaseTime)};
+    {noreply, State#state{cb_state=NewCbState, etag=NewETag}};
 handle_reply_({save, NewCbState}, State=#state{id=Id,
                                                cb_module=CbModule,
                                                provider=Provider,
-                                               lease_time=LeaseTime,
                                                etag=ETag}) ->
     NewETag = replace_state(CbModule, Provider, Id, NewCbState, ETag),
-    {noreply, State#state{cb_state=NewCbState,
-                          etag=NewETag}, lease_time(LeaseTime)}.
+    {noreply, State#state{cb_state=NewCbState, etag=NewETag}}.
 
 %% Saving requires an etag so it can verify no other process has updated the row before us.
 %% The actor needs to crash in the case that the etag found in the table has changed.
@@ -392,8 +401,12 @@ replace_state(CbModule, {Provider, ProviderName}, Id, State, ETag, NewETag) ->
             exit(Reason)
     end.
 
-lease_time(0) -> infinity;
-lease_time(X) -> X.
+lease_timer(0, _) -> infinity;
+lease_timer(X, undefined) ->
+    erlang:send_after(X, self(), lease_expiry);
+lease_timer(X, Ref) ->
+    erlang:cancel_timer(Ref, [{async, true}]),  % is this a good idea? what if there's a race?
+    erlang:send_after(X, self(), lease_expiry).
 
 maybe_enqueue_grain(GrainRef = #{placement := {stateless, _}}) ->
     erleans_stateless:enqueue_grain(GrainRef, self());

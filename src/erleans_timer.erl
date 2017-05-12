@@ -29,17 +29,27 @@
 %%% ---------------------------------------------------------------------------
 -module(erleans_timer).
 
-
-%% define all passed messages here to get compiler help with atom typos
--define(key, '$erleans_timer_ref').
--define(tick, '$erleans_timer_tick').
--define(cancel, '$erleans_timer_cancel').
+-include("include/erleans_timer.hrl").
 
 -export([start/3,
          start/4,
          cancel/0,
-         cancel/1]).
+         cancel/1,
+         resumable_cancel/0,
+         check/0,
+         recover/0]).
 
+-record(timer,
+        {
+          grain :: pid(),
+          grain_ref :: map(),
+          callback :: function(),
+          args :: term(),
+          period :: pos_integer()
+        }).
+
+-opaque timer() :: #timer{}.
+-export_type([timer/0]).
 
 start(Callback, Args, StartTime) ->
     start(Callback, Args, StartTime, never).
@@ -50,17 +60,19 @@ start(Callback, Args, StartTime, Period) ->
             {error, called_outside_of_grain_context};
         GrainRef ->
             Grain = self(),
-            Pid =
-                spawn(fun() ->
-                              link(Grain),
-                              Now = erlang:monotonic_time(milli_seconds),
-                              FirstFire = Now + StartTime,
-                              erlang:send_after(FirstFire, self(), ?tick,
-                                                [{abs, true}]),
-                              loop(FirstFire, Callback, GrainRef, Args,
-                                   Period, Grain)
-                      end),
-            put(?key, Pid),
+            Timer =
+                #timer{grain = Grain,
+                       grain_ref = GrainRef,
+                       callback = Callback,
+                       args = Args,
+                       period = Period},
+            Pid = start_timer(StartTime, Timer),
+            case get(?key) of
+                undefined ->
+                    put(?key, #{Pid => Timer});
+                Map ->
+                    put(?key, Map#{Pid => Timer})
+            end,
             {ok, Pid}
     end.
 
@@ -68,22 +80,88 @@ cancel() ->
     case get(?key) of
         undefined ->
             {error, no_timer_to_cancel};
-        Pid when is_pid(Pid) ->
-            Pid ! ?cancel,
+        Map when is_map(Map) ->
+            maps:fold(fun(Pid, _V, Acc) ->
+                              Pid ! ?cancel,
+                              Acc
+                      end, beep, Map),
             erlang:erase(?key),
             ok
     end.
 
 cancel(Pid) when is_pid(Pid) ->
-    Pid ! ?cancel,
-    erase(?key),
-    ok.
+    case get(?key) of
+        #{Pid := _} = Map ->
+            Pid ! ?cancel,
+            put(?key, maps:remove(Pid, Map)),
+            ok;
+        _ ->
+            {error, no_timer_to_cancel}
+    end.
+
+%%% in order to be able to recover the list of timers when the grain
+%%% starts to go down and then is reactivated before all of the
+%%% in-process timer ticks can complete, we need to have a slightly
+%%% different form of cancel, which leaves the timer information
+%%% structure intact so we can restart them if we need to.
+resumable_cancel() ->
+    case get(?key) of
+        undefined ->
+            {error, no_timer_to_cancel};
+        Map when is_map(Map) ->
+            maps:fold(fun(Pid, _V, Acc) ->
+                              Pid ! ?cancel,
+                              Acc
+                      end, beep, Map),
+            erase(?key),
+            put(?recovery, Map)
+    end.
+
+check() ->
+    case get(?recovery) of
+        undefined ->
+            finished;
+        Map when is_map(Map) ->
+            AnythingAlive =
+                maps:fold(fun(_Pid, _V, false) ->
+                                  false;
+                             (Pid, _V, true) ->
+                                  case is_process_alive(Pid) of
+                                      true -> false;
+                                      false -> true
+                                  end
+                          end, true, Map),
+            case AnythingAlive of
+                false ->
+                    finished;
+                _ ->
+                    pending
+            end
+    end.
+
+recover() ->
+    case get(?recovery) of
+        undefined ->
+            ok;
+        Map when is_map(Map) ->
+            NewMap = maps:fold(fun(_Pid, Timer, Acc) ->
+                                       NewPid = start_timer(Timer#timer.period, Timer),
+                                       Acc#{NewPid => Timer}
+                               end, #{}, Map),
+            erase(?recovery),
+            put(?key, NewMap)
+    end.
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% internal functions %%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 
-loop(FireTime, Callback, GrainRef, Args, Period, Grain) ->
+loop(FireTime, #timer{grain = Grain,
+                      grain_ref = GrainRef,
+                      callback = Callback,
+                      args = Args,
+                      period = Period} = Timer) ->
     receive
         ?cancel ->
             unlink(Grain),
@@ -99,8 +177,7 @@ loop(FireTime, Callback, GrainRef, Args, Period, Grain) ->
                             NextFire = FireTime + Period,
                             erlang:send_after(NextFire, self(), ?tick,
                                               [{abs, true}]),
-                            loop(NextFire, Callback, GrainRef, Args,
-                                 Period, Grain)
+                            loop(NextFire, Timer)
                     end
             catch Class:Error ->
                     Grain ! {erleans_timer_error, Class, Error},
@@ -109,3 +186,13 @@ loop(FireTime, Callback, GrainRef, Args, Period, Grain) ->
         Msg ->
             Grain ! {erleans_timer_unexpected_msg, Msg}
     end.
+
+start_timer(StartTime, #timer{grain = Grain} = Timer) ->
+    spawn(fun() ->
+                  link(Grain),
+                  Now = erlang:monotonic_time(milli_seconds),
+                  FirstFire = Now + StartTime,
+                  erlang:send_after(FirstFire, self(), ?tick,
+                                    [{abs, true}]),
+                  loop(FirstFire, Timer)
+          end).
