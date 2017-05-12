@@ -14,42 +14,39 @@
 %%% limitations under the License.
 %%%----------------------------------------------------------------------------
 
-%%%-------------------------------------------------------------------
-%% @doc erleans top level supervisor.
+%%%----------------------------------------------------------------------------
+%% @doc supervisor for processes that depend on the consistent hash partitions.
 %% @end
-%%%-------------------------------------------------------------------
+%%%----------------------------------------------------------------------------
 
--module(erleans_sup).
+-module(erleans_partitions_sup).
 
 -behaviour(supervisor).
 
--export([start_link/1,
-         start_partitions_sup/0]).
+-export([start_link/0]).
 
 -export([init/1]).
 
 -define(SERVER, ?MODULE).
 
--spec start_link(list()) -> {ok, pid()}.
-start_link(ProviderPoolSpecs) ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, [ProviderPoolSpecs]).
+-spec start_link() -> {ok, pid()}.
+start_link() ->
+    supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
-start_partitions_sup() ->
-    supervisor:start_child(?SERVER, #{id => erleans_partitions_sup,
-                                      start => {erleans_partitions_sup, start_link, []},
-                                      restart => permanent,
-                                      type => supervisor,
-                                      shutdown => 5000}).
-
-init([ProviderPools]) ->
-    SupFlags = #{strategy => one_for_one,
+init([]) ->
+    SupFlags = #{strategy => rest_for_one,
                  intensity => 0,
                  period => 1},
-    ChildSpecs = [#{id => erleans_grain_sup,
-                    start => {erleans_grain_sup, start_link, []},
+    ChildSpecs = [#{id => erleans_partitions,
+                    start => {erleans_partitions, start_link, []},
+                    restart => permanent,
+                    type => worker,
+                    shutdown => 5000},
+                  #{id => erleans_streams_sup,
+                    start => {erleans_streams_sup, start_link, []},
                     restart => permanent,
                     type => supervisor,
-                    shutdown => 5000} | ProviderPools],
+                    shutdown => 5000}],
     {ok, {SupFlags, ChildSpecs}}.
 
 %%====================================================================

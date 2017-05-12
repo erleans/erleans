@@ -28,10 +28,16 @@
          close/1,
          all/2,
          read/3,
+         read_by_hash/3,
          insert/5,
-         replace/6]).
+         insert/6,
+         replace/6,
+         replace/7]).
+
+-include("erleans.hrl").
 
 init(_ProviderName, Args) ->
+    load_queries(?MODULE, filename:join(code:priv_dir(erleans), "blob_provider.sql")),
     {pool, Args}.
 
 post_init(ProviderName, _Args) ->
@@ -62,11 +68,20 @@ read(Type, ProviderName, Id) ->
                          end
                      end).
 
+read_by_hash(Type, ProviderName, Hash) ->
+    do(ProviderName, fun(C) -> read_by_hash_(Hash, Type, C) end).
+
 insert(Type, ProviderName, Id, State, ETag) ->
-    do(ProviderName, fun(C) -> insert(Id, Type, erlang:phash2({Id, Type}), ETag, State, C) end).
+    insert(Type, ProviderName, Id, erlang:phash2({Id, Type}), State, ETag).
+
+insert(Type, ProviderName, Id, Hash, State, ETag) ->
+    do(ProviderName, fun(C) -> insert_(Id, Type, Hash, ETag, State, C) end).
 
 replace(Type, ProviderName, Id, State, OldETag, NewETag) ->
-    do(ProviderName, fun(C) -> replace(Id, Type, erlang:phash2({Id, Type}), OldETag, NewETag, State, C) end).
+    replace(Type, ProviderName, Id, erlang:phash2({Id, Type}), State, OldETag, NewETag).
+
+replace(Type, ProviderName, Id, Hash, State, OldETag, NewETag) ->
+    do(ProviderName, fun(C) -> replace_(Id, Type, Hash, OldETag, NewETag, State, C) end).
 
 %%%
 
@@ -79,30 +94,20 @@ do(ProviderName, Fun) ->
     end.
 
 create_grains_table(C) ->
-    {{create,table},[]} = pgsql_connection:simple_query(["CREATE TABLE IF NOT EXISTS erleans_grains ( "
-                                                        "  grain_id BYTEA NOT NULL, ", % CHARACTER VARYING(2048), "
-                                                        "  grain_type CHARACTER VARYING(2048), "
-                                                        "  grain_ref_hash BIGINT NOT NULL, "
-                                                        "  grain_etag BIGINT NOT NULL, "
-                                                        "  grain_state BYTEA NOT NULL, "
-                                                        "  change_time TIMESTAMP NOT NULL,"
-                                                        "  PRIMARY KEY (grain_id, grain_type))"], {pgsql_connection, C}),
-    pgsql_connection:simple_query(["CREATE INDEX IF NOT EXISTS ",
-                                   "erleans_grains_term_idx ON erleans_grains USING HASH (grain_state)"], {pgsql_connection, C}).
+    {{create,table},[]} = pgsql_connection:simple_query(query(create_table), {pgsql_connection, C}),
+    pgsql_connection:simple_query(query(create_idx), {pgsql_connection, C}).
 
 all_(Type, C) ->
-    Q = ["SELECT grain_id, grain_etag, grain_state ",
-         "FROM erleans_grains WHERE grain_type = $1"],
+    Q = query(select_all),
     {{select, _}, Rows} = pgsql_connection:extended_query(Q, [atom_to_binary(Type, utf8)], {pgsql_connection, C}),
     {ok, [{binary_to_term(IdBin), Type, ETag, binary_to_term(StateBin)}
          || {IdBin, ETag, StateBin} <- Rows]}.
 
 
 read(Id, Type, RefHash, C) ->
-    Q = ["SELECT grain_id, grain_type, grain_etag, grain_state ",
-         "FROM erleans_grains WHERE grain_ref_hash = $1"],
+    Q = query(select),
     RefHash = erlang:phash2({Id, Type}),
-    {{select, _}, Rows} = pgsql_connection:extended_query(Q, [RefHash],
+    {{select, _}, Rows} = pgsql_connection:extended_query(Q, [RefHash, atom_to_binary(Type, unicode)],
                                                           {pgsql_connection, C}),
     IdBin = term_to_binary(Id),
     TypeBin = atom_to_binary(Type, utf8),
@@ -112,17 +117,22 @@ read(Id, Type, RefHash, C) ->
                       false
                   end, Rows).
 
-insert(Id, Type, RefHash, GrainETag, GrainState, C) ->
-    Q = ["INSERT INTO erleans_grains (grain_id, grain_type, grain_ref_hash, grain_etag, grain_state, change_time) VALUES ",
-         "($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)"],
+read_by_hash_(Hash, Type, C) ->
+    Q = query(select),
+    {{select, _}, Rows} = pgsql_connection:extended_query(Q, [Hash, atom_to_binary(Type, unicode)],
+                                                          {pgsql_connection, C}),
+    {ok, [{binary_to_term(IdBin), Type, ETag, binary_to_term(StateBin)}
+         || {IdBin, _, ETag, StateBin} <- Rows]}.
+
+insert_(Id, Type, RefHash, GrainETag, GrainState, C) ->
+    Q = query(insert),
     IdBin = term_to_binary(Id),
     {{insert, _, 1}, []} = pgsql_connection:extended_query(Q, [IdBin, atom_to_binary(Type, utf8), RefHash,
                                                                GrainETag, term_to_binary(GrainState)],
                                                            {pgsql_connection, C}).
 
-replace(Id, Type, RefHash, OldGrainETag, NewGrainETag, GrainState, C) ->
-    Q = ["UPDATE erleans_grains SET grain_etag = $1, grain_state = $2, change_time = CURRENT_TIMESTAMP ",
-         "WHERE grain_ref_hash = $3 AND grain_id = $4 AND grain_type = $5 AND grain_etag = $6"],
+replace_(Id, Type, RefHash, OldGrainETag, NewGrainETag, GrainState, C) ->
+    Q = query(update),
     IdBin = term_to_binary(Id),
     case pgsql_connection:extended_query(Q, [NewGrainETag, term_to_binary(GrainState), RefHash, IdBin,
                                              atom_to_binary(Type, utf8), OldGrainETag],
@@ -131,4 +141,17 @@ replace(Id, Type, RefHash, OldGrainETag, NewGrainETag, GrainState, C) ->
             ok;
         {{update, 0}, []} ->
             {error, bad_etag}
+    end.
+
+load_queries(Module, File) ->
+    ets:new(Module, [named_table, set, {read_concurrency, true}]),
+    {ok, Queries} = eql:compile(File),
+    ets:insert(Module, Queries).
+
+query(Name) ->
+    case ets:lookup(?MODULE, Name) of
+        [] ->
+            not_found;
+        [{_, Query}] ->
+            Query
     end.

@@ -52,7 +52,6 @@ init([Name, Config]) ->
     ConnManager = {{erleans_conn_manager, Name}, {erleans_conn_manager, start_link, [Module, Name, Size, Options]},
                    permanent, 5000, worker, [nucleus_provider_worker]},
 
-
     {ok, {{one_for_one, 5, 10}, [Broker, ConnManager]}}.
 
 %%====================================================================

@@ -124,7 +124,7 @@ handle_info(timeout, State=#state{mod=Mod,
                                   backoff=B}) ->
     {B2, Conns1} = lists:foldl(fun(_, {BAcc, ConnsAcc}) ->
                                    connect(Mod, Args, Broker, ConnsAcc, BAcc)
-                              end, {B, Conns}, lists:seq(1, Size)),
+                               end, {B, Conns}, lists:seq(1, Size)),
     {noreply, State#state{conns=Conns1,
                           backoff=B2}}.
 

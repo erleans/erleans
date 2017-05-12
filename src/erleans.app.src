@@ -13,15 +13,18 @@
     lasp_pg,
     gproc,
     sbroker,
-    hash_ring,
+    jch,
+    eql,
     erlware_commons
    ]},
   {modules, []},
   {env, [{default_lease_time, 2700000}, %% 45 minutes
          {default_life_time, 0},
-         {default_eval_interval, 60}]},
+         {default_eval_interval, 60},
+
+         {num_partitions, 128}]},
 
   {maintainers, ["Tristan Sloughter", "Bryan Hughes", "Evan Vigil-McClanahan", "Andrew Varner"]},
   {licenses, ["Apache 2"]},
-  {links, ["https://github.com/SpaceTime-IoT/erleans"]}
+  {links, [{"GitHub", "https://github.com/SpaceTime-IoT/erleans"}]}
  ]}.
