@@ -155,8 +155,10 @@ do_for_ref(GrainRef, Fun) ->
                 case activate_grain(GrainRef) of
                     {ok, Pid} ->
                         Fun(Pid);
-                    _ ->
-                        exit(noproc)
+                    {error, {already_started, Pid}} ->
+                        Fun(Pid);
+                    Err ->
+                        exit({noproc, Err})
                 end
         end
     catch
