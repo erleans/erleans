@@ -25,6 +25,12 @@
 %%% many timers going at once, `cancel_timer/1` must be used
 %%% explicitly on each.
 %%%
+%%% A note about timers and shutdown.  Following Orleans, calls made
+%%% from timers do not extend the lease time on a grain and a long
+%%% call made in a timer callback can extend the life of the grain.
+%%% For that reason, timers can miss ticks and tick too quickly around
+%%% the lease time of a grain.
+%%%
 %%% @end
 %%% ---------------------------------------------------------------------------
 -module(erleans_timer).
@@ -35,7 +41,7 @@
          start/4,
          cancel/0,
          cancel/1,
-         resumable_cancel/0,
+         recoverable_cancel/0,
          check/0,
          recover/0]).
 
@@ -45,7 +51,7 @@
           grain_ref :: map(),
           callback :: function(),
           args :: term(),
-          period :: pos_integer()
+          period :: pos_integer() | never
         }).
 
 -opaque timer() :: #timer{}.
@@ -104,7 +110,7 @@ cancel(Pid) when is_pid(Pid) ->
 %%% in-process timer ticks can complete, we need to have a slightly
 %%% different form of cancel, which leaves the timer information
 %%% structure intact so we can restart them if we need to.
-resumable_cancel() ->
+recoverable_cancel() ->
     case get(?key) of
         undefined ->
             {error, no_timer_to_cancel};
@@ -123,14 +129,11 @@ check() ->
             finished;
         Map when is_map(Map) ->
             AnythingAlive =
-                maps:fold(fun(_Pid, _V, false) ->
-                                  false;
-                             (Pid, _V, true) ->
-                                  case is_process_alive(Pid) of
-                                      true -> false;
-                                      false -> true
-                                  end
-                          end, true, Map),
+                maps:fold(fun(_Pid, _V, true) ->
+                                  true;
+                             (Pid, _V, _) ->
+                                  is_process_alive(Pid)
+                          end, false, Map),
             case AnythingAlive of
                 false ->
                     finished;
@@ -158,7 +161,6 @@ recover() ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 
 loop(FireTime, #timer{grain = Grain,
-                      grain_ref = GrainRef,
                       callback = Callback,
                       args = Args,
                       period = Period} = Timer) ->
@@ -167,7 +169,7 @@ loop(FireTime, #timer{grain = Grain,
             unlink(Grain),
             ok;
         ?tick ->
-            try Callback(GrainRef, Args) of
+            try Callback(Grain, Args) of
                 _ ->
                     case Period of
                         never ->
@@ -187,12 +189,11 @@ loop(FireTime, #timer{grain = Grain,
             Grain ! {erleans_timer_unexpected_msg, Msg}
     end.
 
-start_timer(StartTime, #timer{grain = Grain} = Timer) ->
-    spawn(fun() ->
-                  link(Grain),
-                  Now = erlang:monotonic_time(milli_seconds),
-                  FirstFire = Now + StartTime,
-                  erlang:send_after(FirstFire, self(), ?tick,
-                                    [{abs, true}]),
-                  loop(FirstFire, Timer)
-          end).
+start_timer(StartTime, Timer) ->
+    spawn_link(fun() ->
+                       Now = erlang:monotonic_time(milli_seconds),
+                       FirstFire = Now + StartTime,
+                       erlang:send_after(FirstFire, self(), ?tick,
+                                         [{abs, true}]),
+                       loop(FirstFire, Timer)
+               end).

@@ -17,7 +17,7 @@
 -define(g, timer_test_grain).
 
 all() ->
-    [single_timer, multiple_timers, crashy_timer].
+    [single_timer, multiple_timers, crashy_timer, timer_shutdown].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgsql),
@@ -87,4 +87,31 @@ crashy_timer(_Config) ->
     {ok, Acc} = ?g:clear(Grain),
     ?assertEqual([a, a, a, a, a, {erleans_timer_error,exit,boom}],
                  lists:reverse(Acc)),
+    ok.
+
+timer_shutdown(_Config) ->
+    application:set_env(erleans, default_lease_time, 30),
+    Grain = erleans:get_grain(timer_test_grain, <<"shutdown-timer-test-grain">>),
+
+    ?g:long_timer(Grain),
+
+    timer:sleep(80),  % sleep till we should be way shut down, but timer should keep us awake
+
+    %% recover
+    ?g:node(Grain),
+    timer:sleep(15),
+
+    {ok, Acc0} = ?g:clear(Grain),
+    Acc = lists:reverse(Acc0),
+    ct:pal("~p", [Acc]),
+
+    {Calls, Pids} = lists:unzip(Acc),
+    %% two short before that timer gets cancelled, then a long and a
+    %% short from the restarted timer
+    ?assertEqual([short, short, long, short], Calls),
+    %% we should have 3 pids here, two for the short, one for the
+    %% long.  If we waited long enough for another long, there would
+    %% be four
+    ?assertEqual(3, length(lists:usort(Pids))),
+
     ok.

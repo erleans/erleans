@@ -93,7 +93,8 @@
          ref                   :: erleans:grain_ref(),
          create_time           :: non_neg_integer(),
          lease_time            :: non_neg_integer() | infinity,
-         lease_timer           :: reference() | undefined
+         lease_timer           :: reference() | undefined,
+         deactivating = false  :: boolean()
        }).
 
 -type opts() :: #{ref    => binary(),
@@ -271,15 +272,35 @@ handle_cast({ReqType, Msg}, State=#state{cb_module=CbModule,
 upd_lease(leave_lease, _, _, State) ->
     State;
 upd_lease(refresh_lease, LeaseTime, LeaseTimer, State) ->
-    State#state{lease_timer=lease_timer(LeaseTime, LeaseTimer)}.
+    case State#state.deactivating of
+        true ->
+            erleans_timer:recover();
+        _ -> ok
+    end,
+    State#state{lease_timer = lease_timer(LeaseTime, LeaseTimer),
+                deactivating = false}.
 
 handle_info(lease_expiry, State) ->
-    finalize_and_stop(State);
+    finalize_and_stop(State, true);
+handle_info(check_timers, State = #state{deactivating = false}) ->
+    {noreply, State};
+handle_info(check_timers, State ) ->
+    case erleans_timer:check() of
+        finished ->
+            finalize_and_stop(State, false);
+        pending ->
+            %% we can't get here with a reply pending
+            erlang:send_after(50, self(), check_timers),
+            {noreply, State}
+    end;
 handle_info({erleans_grain_tag, {go, _, _, _, _}}, State) ->
     %% checked out
     {noreply, State};
 handle_info({erleans_grain_tag, {drop, _}}, State) ->
     %% dropped from queue
+    {noreply, State};
+handle_info({cancel_timer, _Pid, _TimeLeft}, State) ->
+    %% filter these out
     {noreply, State};
 handle_info(Message, State=#state{cb_module=CbModule,
                                   cb_state=CbState}) ->
@@ -300,17 +321,29 @@ terminate(Reason, State) ->
     lager:info("at=terminate reason=~p", [Reason]),
     %% supervisor is terminating, node is probably shutting down.
     %% deactivate the grain so it can clean up and save if needed
-    _ = finalize_and_stop(State),
+    _ = finalize_and_stop(State, false),
     ok.
 
 %% Internal functions
 
+finalize_and_stop(State, true) ->
+    %% first, cancel all timers, see if anything is ticking, if no,
+    %% then we need to wait to see if we can shut down
+    erleans_timer:recoverable_cancel(),
+    case erleans_timer:check() of
+        finished ->
+            finalize_and_stop(State, false);
+        pending ->
+            %% we can't get here with a reply pending
+            erlang:send_after(50, self(), check_timers),
+            {noreply, State#state{deactivating = true}}
+    end;
 finalize_and_stop(State=#state{cb_module=CbModule,
                                id=Id,
                                ref=Ref,
                                provider=Provider,
                                cb_state=CbState,
-                               etag=ETag}) ->
+                               etag=ETag}, false) ->
     %% Save to or delete from backing storage.
     erleans_pm:unregister_name(Ref, self()),
     case CbModule:deactivate(CbState) of
@@ -327,10 +360,10 @@ handle_reply(Reply, State=#state{ref=GrainRef}) ->
     handle_reply_(Reply, State).
 
 handle_reply_({stop, _Reason, Reply, NewCbState}, State) ->
-    {stop, Reason, NewState} = finalize_and_stop(State#state{cb_state=NewCbState}),
+    {stop, Reason, NewState} = finalize_and_stop(State#state{cb_state=NewCbState}, false),
     {stop, Reason, Reply, NewState};
 handle_reply_({stop, NewCbState}, State) ->
-    finalize_and_stop(State#state{cb_state=NewCbState});
+    finalize_and_stop(State#state{cb_state=NewCbState}, false);
 handle_reply_({reply, Reply, NewCbState}, State) ->
     {reply, Reply, State#state{cb_state=NewCbState}};
 handle_reply_({noreply, NewCbState}, State) ->

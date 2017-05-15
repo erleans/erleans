@@ -17,6 +17,7 @@
          start_timers/1,
          cancel_timers/1,
          crashy_timer/1,
+         long_timer/1,
          start_one_timer/1,
          cancel_one_timer/1,
          accumulate/2,
@@ -44,6 +45,9 @@ cancel_timers(Ref) ->
 
 crashy_timer(Ref) ->
     erleans_grain:call(Ref, crashy_timer).
+
+long_timer(Ref) ->
+    erleans_grain:call(Ref, long_timer).
 
 start_one_timer(Ref) ->
     erleans_grain:call(Ref, start_one_timer).
@@ -99,6 +103,18 @@ handle_call(crashy_timer, _From, State) ->
                 timer_test_grain:accumulate(Ref, Arg)
          end,
     erleans_timer:start(F, a, 5, 5),
+    {reply, ok, State};
+
+handle_call(long_timer, _From, State) ->
+    F1 = fun(Ref, Arg) ->
+                 timer:sleep(90),
+                 timer_test_grain:accumulate(Ref, {Arg, self()})
+         end,
+    F2 = fun(Ref, Arg) ->
+                 timer_test_grain:accumulate(Ref, {Arg, self()})
+         end,
+    erleans_timer:start(F1, long, 1, 1000),
+    erleans_timer:start(F2, short, 5, 15),
     {reply, ok, State};
 
 handle_call(start_one_timer, _From, State) ->
