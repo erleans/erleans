@@ -32,8 +32,8 @@ records_read(Ref) ->
 
 init(#{id := Id}, State=#{}) ->
     Topic = <<Id/binary, "-some-topic">>,
-    StreamProvider = test_stream_provider,
-    erleans_grain:subscribe(StreamProvider, Topic),
+    StreamProvider = erleans_config:get(default_stream_provider),
+    ok = erleans_grain:subscribe(StreamProvider, Topic),
     {ok, State, #{life_time => infinity}}.
 
 handle_call(records_read, _From, State) ->

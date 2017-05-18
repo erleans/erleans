@@ -45,7 +45,8 @@ stop(_State) ->
 %% Internal functions
 
 init_providers() ->
-    Providers = erleans_config:get(providers, []),
+    Providers = erleans_config:get(providers, []) ++
+        erleans_config:get(stream_providers, []),
     lists:foldl(fun({ProviderName, Args}, Acc) ->
                     case init_provider(ProviderName, Args) of
                         {pool, Args1} ->

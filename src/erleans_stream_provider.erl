@@ -18,11 +18,11 @@
 %%% @doc
 %%% @end
 %%% ---------------------------------------------------------------------------
--module(erleans_stream).
+-module(erleans_stream_provider).
 
--export([provider/0]).
+-export([metadata_provider/0]).
 
--callback init(Args :: list()) ->
+-callback init(ProviderName :: atom(), Args :: list()) ->
     ok | {error, Reason :: term()}.
 
 -callback fetch(TopicsOffsets :: [{Topic :: term(), Offset :: integer()}]) ->
@@ -31,5 +31,5 @@
 -callback produce(TopicsRecordSets :: [{Topic :: term(), RecordSet :: list()}]) ->
     [{Topic :: term(), Offset :: integer() | {error, Reason :: term()}}].
 
-provider() ->
+metadata_provider() ->
     erleans_config:get(default_provider).

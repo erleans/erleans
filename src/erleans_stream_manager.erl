@@ -68,7 +68,7 @@ update_streams(Range) ->
 
 init([]) ->
     %% storage provider for stream metadata
-    Provider = erleans_stream:provider(),
+    Provider = erleans_stream_provider:metadata_provider(),
     ProviderOptions = proplists:get_value(Provider, erleans_config:get(providers, [])),
     Module = proplists:get_value(module, ProviderOptions),
 
@@ -177,8 +177,8 @@ enqueue_streams({ProviderModule, Provider}, {Start, Stop}) ->
 
 handle_down_agent(MonitorRef, Monitors, Streams) ->
     {Stream, Monitors1} = maps:take(MonitorRef, Monitors),
-    {Subscribers, _ETag} = maps:get(Stream, Streams),
     lager:info("at=DOWN stream_ref=~p", [Stream]),
+    {Subscribers, _Partition,_ETag} = maps:get(Stream, Streams),
     enqueue_stream(Stream, Subscribers),
     Monitors1.
 
