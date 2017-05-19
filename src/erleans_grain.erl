@@ -166,8 +166,8 @@ do_for_ref(GrainRef, Fun) ->
                         Fun(Pid);
                     {error, {already_started, Pid}} ->
                         Fun(Pid);
-                    Err ->
-                        exit({noproc, Err})
+                    {error, Error} ->
+                        exit({noproc, Error})
                 end
         end
     catch
@@ -236,26 +236,35 @@ init([GrainRef=#{id := Id,
             case erlang:function_exported(CbModule, init, 2) of
                 false ->
                     CbState1 = CbState,
-                    GrainOpts = #{};
+                    GrainOpts = #{},
+                    init_(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbState1);
                 true ->
-                    {ok, CbState1, GrainOpts} = CbModule:init(GrainRef, CbState)
-            end,
-            {CbState2, ETag1} = verify_etag(CbModule, Id, Provider, ETag, CbState1),
-            CreateTime = maps:get(create_time, GrainOpts, erlang:system_time(seconds)),
-            LeaseTime = maps:get(lease_time, GrainOpts, erleans_config:get(default_lease_time)),
-            State = #state{cb_module   = CbModule,
-                           cb_state    = CbState2,
+                    case CbModule:init(GrainRef, CbState) of
+                        {ok, CbState1, GrainOpts} ->
+                            init_(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbState1);
+                        {stop, Reason} ->
+                            {stop, Reason}
+                    end
 
-                           id          = Id,
-                           etag        = ETag1,
-                           provider    = Provider,
-                           ref         = GrainRef,
-                           create_time = CreateTime,
-                           lease_time  = LeaseTime,
-                           lease_timer = lease_timer(LeaseTime, undefined)
-                          },
-            {ok, State}
+            end
     end.
+
+init_(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbState1) ->
+    {CbState2, ETag1} = verify_etag(CbModule, Id, Provider, ETag, CbState1),
+    CreateTime = maps:get(create_time, GrainOpts, erlang:system_time(seconds)),
+    LeaseTime = maps:get(lease_time, GrainOpts, erleans_config:get(default_lease_time)),
+    State = #state{cb_module   = CbModule,
+                   cb_state    = CbState2,
+
+                   id          = Id,
+                   etag        = ETag1,
+                   provider    = Provider,
+                   ref         = GrainRef,
+                   create_time = CreateTime,
+                   lease_time  = LeaseTime,
+                   lease_timer = lease_timer(LeaseTime, undefined)
+                  },
+    {ok, State}.
 
 handle_call({ReqType, Msg}, From, State=#state{cb_module=CbModule,
                                                cb_state=CbState,
