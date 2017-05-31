@@ -32,13 +32,22 @@ init(_Name, _Args) ->  %% TODO: fix before PR to actually honor these
     ok = vg_client_pool:start().
 
 fetch(TopicOffsets) ->
-    [case vg_client:fetch(Topic, Offset) of
+    [case (catch vg_client:fetch(Topic, Offset)) of
+         {ok, #{record_set := [],
+                high_water_mark := _HWM}} ->
+             lager:info("hwm ~p", [_HWM]),
+             {Topic, {Offset, []}};
          {ok, #{record_set := Sets,
-                high_water_mark := HWM}} ->
+                high_water_mark := _HWM}} ->
+             lager:info("hwm ~p", [_HWM]),
+             {IDs, Records} = lists:unzip([decode_fetch(Set) || Set <- Sets]),
+             MaxOffset = lists:max(IDs),
              {Topic,
-              {HWM, [decode_fetch(Set) || Set <- Sets]}};
+              {MaxOffset + 1, Records}};
          {error, _} = E ->
-             E
+             E;
+         {'EXIT', _} ->
+             {error, not_found}
      end
      || {Topic, Offset} <- TopicOffsets].
 
@@ -55,6 +64,6 @@ produce(TopicRecordSets) ->
 
 
 decode_fetch(#{crc := _CRC,
-               id := _ID,
+               id := ID,
                record := Record}) ->
-    Record.
+    {ID, Record}.

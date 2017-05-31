@@ -35,7 +35,9 @@
          call/2,
          call/3,
          cast/2,
-         subscribe/2]).
+         subscribe/2,
+         subscribe/3,
+         unsubscribe/2]).
 
 -export([init/1,
          handle_call/3,
@@ -116,9 +118,20 @@ start_link(GrainRef) ->
     gen_server:start_link({via, erleans_pm, GrainRef}, ?MODULE, [GrainRef], []).
 
 subscribe(StreamProvider, Topic) ->
+    %% 0 is going to be the most common initial token, but subscribe/3
+    %% allows the token to be overridden when it is not 0, or not an
+    %% integer.
+    subscribe(StreamProvider, Topic, 0).
+
+subscribe(StreamProvider, Topic, SequenceToken) ->
     StreamRef = erleans:get_stream(StreamProvider, Topic),
     MyGrain = get(grain_ref),
-    erleans_stream_manager:subscribe(StreamRef, MyGrain).
+    erleans_stream_manager:subscribe(StreamRef, MyGrain, SequenceToken).
+
+unsubscribe(StreamProvider, Topic) ->
+    StreamRef = erleans:get_stream(StreamProvider, Topic),
+    MyGrain = get(grain_ref),
+    erleans_stream_manager:unsubscribe(StreamRef, MyGrain).
 
 -spec call(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 call(GrainRef, Request) ->

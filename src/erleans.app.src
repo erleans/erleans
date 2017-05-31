@@ -15,7 +15,8 @@
     sbroker,
     jch,
     eql,
-    erlware_commons
+    erlware_commons,
+    vonnegut
    ]},
   {modules, []},
   {env, [{default_lease_time, 2700000}, %% 45 minutes

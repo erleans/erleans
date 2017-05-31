@@ -1,5 +1,5 @@
 {"1.1.0",
-[{<<"acceptor_pool">>,{pkg,<<"acceptor_pool">>,<<"1.0.0-rc.0">>},2},
+[{<<"acceptor_pool">>,{pkg,<<"acceptor_pool">>,<<"1.0.0-rc.0">>},1},
  {<<"backoff">>,{pkg,<<"backoff">>,<<"1.1.3">>},0},
  {<<"cf">>,{pkg,<<"cf">>,<<"0.2.2">>},1},
  {<<"eql">>,{pkg,<<"eql">>,<<"0.1.2">>},0},
@@ -7,6 +7,7 @@
  {<<"gen_flow">>,{pkg,<<"gen_flow">>,<<"0.0.3">>},1},
  {<<"goldrush">>,{pkg,<<"goldrush">>,<<"0.1.9">>},1},
  {<<"gproc">>,{pkg,<<"gproc">>,<<"0.6.1">>},0},
+ {<<"granderl">>,{pkg,<<"granderl">>,<<"0.1.5">>},2},
  {<<"jch">>,{pkg,<<"jch">>,<<"0.2.3">>},0},
  {<<"lager">>,{pkg,<<"lager">>,<<"3.4.2">>},0},
  {<<"lasp">>,{pkg,<<"lasp">>,<<"0.1.0">>},0},
@@ -19,9 +20,14 @@
  {<<"riak_dt">>,{pkg,<<"riak_dt">>,<<"2.1.1">>},2},
  {<<"sbroker">>,{pkg,<<"sbroker">>,<<"1.0.0">>},0},
  {<<"sext">>,{pkg,<<"sext">>,<<"1.4.0">>},1},
+ {<<"shackle">>,{pkg,<<"shackle">>,<<"0.4.3">>},1},
  {<<"time_compat">>,{pkg,<<"time_compat">>,<<"0.0.1">>},1},
  {<<"types">>,{pkg,<<"types">>,<<"0.1.3">>},0},
- {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.7.0">>},0}]}.
+ {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"1.7.0">>},0},
+ {<<"vonnegut">>,
+  {git,"https://github.com/spacetime-iot/vonnegut.git",
+       {ref,"f81fd2f22e1a46ca855a2755a3114f918e20b3b5"}},
+  0}]}.
 [
 {pkg_hash,[
  {<<"acceptor_pool">>, <<"679D741DF87FC13599B1AEF2DF8F78F1F880449A6BEFAB7C44FB6FAE0E92A2DE">>},
@@ -32,6 +38,7 @@
  {<<"gen_flow">>, <<"639F5C3F52DC3F7459542DE3F72D5BFF11EB7DB8FB055657A3011F9A70FCF0D7">>},
  {<<"goldrush">>, <<"F06E5D5F1277DA5C413E84D5A2924174182FB108DABB39D5EC548B27424CD106">>},
  {<<"gproc">>, <<"4579663E5677970758A05D8F65D13C3E9814EC707AD51D8DCEF7294EDA1A730C">>},
+ {<<"granderl">>, <<"F20077A68BD80B8D8783BD15A052813C6483771DEC1A5B837D307CBE92F14122">>},
  {<<"jch">>, <<"803AEF05491EEBD20003745E59D2E0EB6BAA1AB49547BE209FC430EFCC4EAAB5">>},
  {<<"lager">>, <<"150B9A17B23AE6D3265CC10DC360747621CF217B7A22B8CDDF03B2909DBF7AA5">>},
  {<<"lasp">>, <<"6AAFAE96D3AD581FDED9B278E8F39BE9330FB9DA662D32C1E5F00A8ECCD942A5">>},
@@ -44,6 +51,7 @@
  {<<"riak_dt">>, <<"56B1898A543C561994F5D052FDEA972525CA98F46FDB3DCDB7366E4F92EE8F54">>},
  {<<"sbroker">>, <<"28FF1B5E58887C5098539F236307B36FE1D3EDAA2ACFF9D6A3D17C2DCAFEBBD0">>},
  {<<"sext">>, <<"2A9443A90C3164231A5E11C73133C4B1762B27FBF1647AA0DE06EF565C47B38B">>},
+ {<<"shackle">>, <<"BDC3F2E1AB19011DBED3D3E55CFEE26FE9F10637805C581AE99DA6E5B14AB946">>},
  {<<"time_compat">>, <<"23FE0AD1FDF3B5B88821B2D04B4B5E865BF587AE66056D671FE0F53514ED8139">>},
  {<<"types">>, <<"920247BB2516DBF3B6B4BB3767D166F16EA8D1ADF2837C8823B5D2BF6B8689ED">>},
  {<<"uuid">>, <<"EB803855E12D57B1CC10522781D1B42064FA2E4C576731700EE48D84A9283292">>}]}

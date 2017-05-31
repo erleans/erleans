@@ -58,3 +58,10 @@ SET
     change_time = CURRENT_TIMESTAMP
 WHERE
     grain_ref_hash = $3 AND grain_id = $4 AND grain_type = $5 AND grain_etag = $6
+
+--
+-- :delete
+DELETE FROM
+    erleans_grains
+WHERE
+    grain_ref_hash = $1 AND grain_id = $2 AND grain_type = $3
