@@ -27,6 +27,7 @@
          connect/1,
          close/1,
          all/2,
+         delete/3,
          read/3,
          read_by_hash/3,
          insert/5,
@@ -67,6 +68,12 @@ read(Type, ProviderName, Id) ->
                                  not_found
                          end
                      end).
+
+delete(Type, ProviderName, Id) ->
+    do(ProviderName,
+       fun(C) ->
+               delete(Id, Type, erlang:phash2({Id, Type}), C)
+       end).
 
 read_by_hash(Type, ProviderName, Hash) ->
     do(ProviderName, fun(C) -> read_by_hash_(Hash, Type, C) end).
@@ -116,6 +123,17 @@ read(Id, Type, RefHash, C) ->
                      (_) ->
                       false
                   end, Rows).
+
+delete(Id, Type, RefHash, C) ->
+    Q = query(delete),
+    RefHash = erlang:phash2({Id, Type}),
+    case pgsql_connection:extended_query(Q, [RefHash,
+                                             term_to_binary(Id),
+                                             atom_to_binary(Type, unicode)],
+                                         {pgsql_connection, C}) of
+        {{delete, 0}, []} ->
+            ok
+    end.
 
 read_by_hash_(Hash, Type, C) ->
     Q = query(select),

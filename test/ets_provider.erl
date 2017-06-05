@@ -10,7 +10,8 @@
          insert/5,
          insert/6,
          replace/6,
-         replace/7]).
+         replace/7,
+         delete/3]).
 
 -define(TAB, ets_provider_tab).
 
@@ -61,3 +62,6 @@ replace(Type, _ProviderName, Id, Hash, State, ETag, NewETag) ->
         _ ->
             {error, not_found}
     end.
+
+delete(_Type, _ProviderName, Id) ->
+    ets:delete(?TAB, Id).

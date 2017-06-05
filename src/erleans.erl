@@ -33,11 +33,9 @@
                        placement           := placement(),
                        provider            => provider() | undefined}.
 
--type sequence_token() :: any().
 -type stream_ref() :: #{topic           := term(),
                         stream_module   := module(),
                         stream_provider := atom(),
-                        sequence_token  := sequence_token(),
                         fetch_interval  := integer()}.
 
 -type placement() :: random | prefer_local | stateless | {stateless, integer()} | system_grain. %% | load
@@ -65,17 +63,16 @@ get_grain(ImplementingModule, Id) ->
 
 -spec get_stream(module(), term()) -> stream_ref().
 get_stream(StreamProvider, Topic) ->
-    get_stream(StreamProvider, Topic, 0).
+    get_stream(StreamProvider, Topic, ?INITIAL_FETCH_INTERVAL).
 
--spec get_stream(module(), term(), sequence_token()) -> stream_ref().
-get_stream(StreamProvider, Topic, SequenceToken) ->
+-spec get_stream(module(), term(), pos_integer()) -> stream_ref().
+get_stream(StreamProvider, Topic, FetchInterval) ->
     StreamConfig = proplists:get_value(StreamProvider, erleans_config:get(stream_providers, [])),
     StreamModule = proplists:get_value(module, StreamConfig),
     #{topic => Topic,
       stream_module => StreamModule,
       stream_provider => StreamProvider,
-      sequence_token => SequenceToken,
-      fetch_interval => ?INITIAL_FETCH_INTERVAL}.
+      fetch_interval => FetchInterval}.
 
 -spec provider(module()) -> provider().
 provider(CbModule) ->

@@ -154,7 +154,7 @@ request_types(_Config) ->
     ?assertEqual({ok, node()}, test_grain:node(Grain)),
     timer:sleep(20),
 
-    Pinger =
+    _Pinger =
         spawn(fun () ->
                       [begin
                            timer:sleep(6),

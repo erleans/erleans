@@ -1,18 +1,33 @@
 -module(test_stream).
 
--behaviour(erleans_stream).
+-behaviour(erleans_stream_provider).
 
--export([init/1,
+-export([init/2,
          fetch/1,
          produce/1]).
 
-init(_Args) ->
+init(_Name, _Args) ->
+    ets:new(test_stream, [public, named_table]),
     ok.
 
-fetch([{T, O} | _]) when O < 9 ->
-    [{T, {O+3, [some_record, another_record, cool_record_bro]}}];
-fetch([{T, O} | _]) ->
-    [{T, {O, []}}].
+fetch(TopicOffsets) ->
+    ct:pal("fetching ~p", [TopicOffsets]),
+    [case ets:lookup(test_stream, Topic) of
+         [] ->
+             {error, not_found};
+         [{_, Records}] ->
+             Tail = lists:nthtail(Offset, Records),
+             LTail = length(Tail),
+             {Topic, {LTail + Offset, Tail}}
+     end
+     || {Topic, Offset} <- TopicOffsets].
 
-produce(_) ->
-    [].
+produce(TopicRecords) ->
+    ct:pal("producing ~p", [TopicRecords]),
+    [case ets:lookup(test_stream, Topic) of
+         [] ->
+             ets:insert(test_stream, {Topic, Records});
+         [{_, Existing}] ->
+             ets:insert(test_stream, {Topic, Existing ++ Records})
+     end
+     || {Topic, Records} <- TopicRecords].
