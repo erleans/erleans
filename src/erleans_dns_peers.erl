@@ -24,9 +24,9 @@ join() ->
     Port = erleans_config:get(partisan_port, 10200),
     NodeName = erleans_config:get(nodename, nonodename),
     AllNodes = lookup(ClusterType, NodeName, Port),
-    ordsets:fold(fun({Name, Host, PartisanPort}, _) ->
-                     erleans_cluster:join(Name, Host, PartisanPort)
-                 end, ok, AllNodes),
+    sets:fold(fun({Name, Host, PartisanPort}, _) ->
+                  erleans_cluster:join(Name, Host, PartisanPort)
+              end, ok, AllNodes),
     {ok, Members} = partisan_peer_service:members(),
     {lists:usort(Members), AllNodes}.
 
@@ -35,13 +35,13 @@ leave() ->
     %% partisan_peer_service:leave([]).
 
 lookup(local, _NodeName, _Port) ->
-    ordsets:new();
+    sets:new();
 lookup(manual, _NodeName, _Port) ->
-    ordsets:new();
+    sets:new();
 lookup(none, _NodeName, _Port) ->
-    ordsets:new();
+    sets:new();
 lookup({direct, Nodes}, _NodeName, _Port) ->
-    ordsets:from_list(Nodes);
+    sets:from_list(Nodes);
 lookup({ip, DiscoveryDomain}, NodeName, Port) ->
     lists:foldl(fun(Record, NodesAcc) ->
                     H = inet_parse:ntoa(Record),
@@ -55,5 +55,5 @@ lookup({fqdns, DiscoveryDomain}, NodeName, Port) ->
 lookup({srv, DiscoveryDomain}, NodeName, _) ->
     lists:foldl(fun({_, _, PartisanPort, Host}, NodesAcc) ->
                     Node = list_to_atom(atom_to_list(NodeName)++"@"++Host),
-                    ordsets:add_element({Node, Host, PartisanPort}, NodesAcc)
-                end, ordsets:new(), inet_res:lookup(DiscoveryDomain, in, srv)).
+                    sets:add_element({Node, Host, PartisanPort}, NodesAcc)
+                end, sets:new(), inet_res:lookup(DiscoveryDomain, in, srv)).
