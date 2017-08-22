@@ -7,7 +7,7 @@ erleans [![CircleCI](https://circleci.com/gh/SpaceTime-IoT/erleans.svg?style=svg
 
 Stateful grains are backed by persistent storage and referenced by a primary key set by the grain. An activiation of a grain is a single Erlang process in on an Erlang node (silo) in an Erlang cluster. Activation placement is handled by Erleans and communication is over standard Erlang distribution. If a grain is sent a message and does not have a current activiation one is spawned.
 
-Grain state is persisted through a database provider with an always increasing change id or etag. If the change id or etag has been by another activiation the activation attempting to save state will stop.
+Grain state is persisted through a database provider with an always increasing change id or etag. If the change id or etag has been by another activation the activation attempting to save state will stop.
 
 Activations are registered through [lasp_pg](https://github.com/lasp-lang/lasp_pg.git).
 
