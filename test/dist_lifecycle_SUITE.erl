@@ -108,5 +108,9 @@ manual_start_stop(_Config) ->
 
 simple_subscribe(_Config) ->
     Grain1 = erleans:get_grain(stream_test_grain, <<"dist-simple-subscribe-grain1">>),
+    Topic = <<"dist-simple-topic">>,
+    stream_test_grain:subscribe(Grain1, Topic),
+    RcrdList = lists:duplicate(5 + rand:uniform(100), <<"repeated simple record">>),
+    erleans_test_utils:produce(Topic, RcrdList),
     ?UNTIL(stream_test_grain:records_read(Grain1) >= 3),
     ok.
