@@ -13,7 +13,7 @@
          hello/1,
          save/1]).
 
--export([init/2,
+-export([activate/2,
          handle_call/3,
          handle_cast/2,
          handle_info/2,
@@ -30,7 +30,7 @@ hello(Ref) ->
 save(Ref) ->
     erleans_grain:call(Ref, save).
 
-init(_, State) ->
+activate(_, State) ->
     {ok, State, #{}}.
 
 handle_call(hello, _From, State) ->

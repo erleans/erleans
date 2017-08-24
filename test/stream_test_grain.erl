@@ -16,7 +16,7 @@
 
 -export([placement/0,
          provider/0,
-         init/2,
+         activate/2,
          handle_call/3,
          handle_cast/2,
          handle_info/2,
@@ -45,7 +45,7 @@ reset(Ref) ->
 records_read(Ref) ->
     erleans_grain:call(Ref, records_read).
 
-init(#{id := _Id}, State=#{}) ->
+activate(#{id := _Id}, State=#{}) ->
     ct:pal("starting or waking up? ~p", [State]),
     {ok, State, #{life_time => infinity}}.
 
