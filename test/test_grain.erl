@@ -16,7 +16,7 @@
          deactivated_counter/1,
          activated_counter/1]).
 
--export([init/2,
+-export([activate/2,
          handle_call/3,
          handle_cast/2,
          handle_info/2,
@@ -42,9 +42,9 @@ save(Ref) ->
 node(Ref) ->
     erleans_grain:call(Ref, node).
 
-init(_, State=#{activated_counter := Counter}) ->
+activate(_, State=#{activated_counter := Counter}) ->
     {ok, State#{activated_counter => Counter+1}, #{life_time => infinity}};
-init(_, State=#{}) ->
+activate(_, State=#{}) ->
     {ok, State#{activated_counter => 1}, #{life_time => infinity}}.
 
 handle_call(node, _From, State) ->

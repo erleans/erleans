@@ -19,7 +19,7 @@
 
 -export([placement/0,
          provider/0,
-         init/2,
+         activate/2,
          handle_call/3,
          handle_cast/2,
          handle_info/2,
@@ -55,9 +55,9 @@ save(Ref) ->
 node(Ref) ->
     erleans_grain:call(Ref, node).
 
-init(_, PState=#{activated_counter := Counter}) ->
+activate(_, PState=#{activated_counter := Counter}) ->
     {ok, ?INIT_STATE#{persistent => PState#{activated_counter => Counter+1}}, #{life_time => infinity}};
-init(_, #{}) ->
+activate(_, #{}) ->
     {ok, ?INIT_STATE, #{life_time => infinity}}.
 
 handle_call(node, _From, State) ->

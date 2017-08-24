@@ -54,7 +54,7 @@
 -type cb_state() :: term() | #{persistent := term(),
                                ephemeral  := term()}.
 
--callback init(Ref :: erleans:grain_ref(), Arg :: term()) ->
+-callback activate(Ref :: erleans:grain_ref(), Arg :: term()) ->
     {ok, State :: cb_state(), opts()} |
     ignore |
     {stop, Reason :: term()}.
@@ -246,13 +246,13 @@ init([GrainRef=#{id := Id,
         notfound ->
             {stop, notfound};
         _ ->
-            case erlang:function_exported(CbModule, init, 2) of
+            case erlang:function_exported(CbModule, activate, 2) of
                 false ->
                     CbState1 = CbState,
                     GrainOpts = #{},
                     init_(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbState1);
                 true ->
-                    case CbModule:init(GrainRef, CbState) of
+                    case CbModule:activate(GrainRef, CbState) of
                         {ok, CbState1, GrainOpts} ->
                             init_(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbState1);
                         {stop, Reason} ->

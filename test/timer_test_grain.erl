@@ -23,7 +23,7 @@
          accumulate/2,
          clear/1]).
 
--export([init/2,
+-export([activate/2,
          handle_call/3,
          handle_cast/2,
          handle_info/2,
@@ -70,7 +70,7 @@ node(Ref) ->
 stop(Ref) ->
     erleans_grain:call(Ref, stop).
 
-init(_, State=#{}) ->
+activate(_, State=#{}) ->
     {ok, State#{acc => []}, #{life_time => infinity}}.
 
 handle_call(node, _From, State) ->
