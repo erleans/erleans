@@ -74,9 +74,9 @@ activated_counter(Ref) ->
 node(Ref) ->
     erleans_grain:call(Ref, node).
 
-init(_Grainref, State=#{activated_counter := Counter}) ->
+activate(_Grainref, State=#{activated_counter := Counter}) ->
     {ok, State#{activated_counter => Counter+1}, #{}};
-init(_Grainref, State=#{}) ->
+activate(_Grainref, State=#{}) ->
     {ok, State#{activated_counter => 1}, #{}}.
 ```
 

@@ -90,7 +90,7 @@ crashy_timer(_Config) ->
     ok.
 
 timer_shutdown(_Config) ->
-    application:set_env(erleans, default_lease_time, 30),
+    application:set_env(erleans, deactivate_after, 30),
     Grain = erleans:get_grain(timer_test_grain, <<"shutdown-timer-test-grain">>),
 
     ?g:long_timer(Grain),

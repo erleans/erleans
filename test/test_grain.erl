@@ -43,9 +43,9 @@ node(Ref) ->
     erleans_grain:call(Ref, node).
 
 activate(_, State=#{activated_counter := Counter}) ->
-    {ok, State#{activated_counter => Counter+1}, #{life_time => infinity}};
+    {ok, State#{activated_counter => Counter+1}, #{}};
 activate(_, State=#{}) ->
-    {ok, State#{activated_counter => 1}, #{life_time => infinity}}.
+    {ok, State#{activated_counter => 1}, #{}}.
 
 handle_call(node, _From, State) ->
     {reply, {ok, node()}, State};

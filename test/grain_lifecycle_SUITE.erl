@@ -22,7 +22,7 @@ init_per_suite(Config) ->
     application:ensure_all_started(pgsql),
     application:load(erleans),
     %% set a really low lease time for testing deactivations
-    application:set_env(erleans, default_lease_time, 1),
+    application:set_env(erleans, deactivate_after, 1),
     {ok, _} = application:ensure_all_started(erleans),
     Config.
 
@@ -58,7 +58,7 @@ manual_start_stop(_Config) ->
     ok.
 
 bad_etag_save(_Config) ->
-    application:set_env(erleans, default_lease_time, 60),
+    application:set_env(erleans, deactivate_after, 60),
     Grain = #{provider := {ProviderModule, ProviderName}} = erleans:get_grain(test_grain, <<"bad-etag-save-grain">>),
 
     ?assertEqual({ok, 1}, test_grain:activated_counter(Grain)),
@@ -79,7 +79,7 @@ bad_etag_save(_Config) ->
     ok.
 
 ephemeral_state(_Config) ->
-    application:set_env(erleans, default_lease_time, 1),
+    application:set_env(erleans, deactivate_after, 1),
     Grain = erleans:get_grain(test_ephemeral_state_grain, <<"ephemeral-state-grain">>),
 
     ?assertEqual({ok, 1}, test_ephemeral_state_grain:activated_counter(Grain)),
@@ -99,7 +99,7 @@ ephemeral_state(_Config) ->
     ok.
 
 no_provider_grain(_Config) ->
-    application:set_env(erleans, default_lease_time, 60),
+    application:set_env(erleans, deactivate_after, 60),
     Grain = erleans:get_grain(no_provider_test_grain, <<"no_provider">>),
 
     ?assertEqual(hello, no_provider_test_grain:hello(Grain)),
@@ -110,7 +110,7 @@ no_provider_grain(_Config) ->
     ok.
 
 request_types(_Config) ->
-    application:set_env(erleans, default_lease_time, 30),
+    application:set_env(erleans, deactivate_after, 30),
     Grain = erleans:get_grain(test_grain, <<"request-types-grain">>),
 
     ?assertEqual({ok, node()}, test_grain:node(Grain)),
@@ -169,4 +169,3 @@ request_types(_Config) ->
     ?assertMatch({'EXIT', _}, (catch test_grain:activated_counter(GrainPid))),
 
     ok.
-
