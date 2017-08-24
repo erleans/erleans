@@ -64,7 +64,7 @@ simple_subscribe(_Config) ->
     Grain3 = erleans:get_grain(stream_test_grain, <<"simple-subscribe-grain3">>),
     ok = stream_test_grain:subscribe(Grain1, Topic),
     RcrdList = lists:duplicate(5 + rand:uniform(100), <<"repeated simple record">>),
-    produce(Topic, RcrdList),
+    erleans_test_utils:produce(Topic, RcrdList),
     ct:pal("grain1 ~p~n~p", [Grain1, erleans_pm:whereis_name(Grain1)]),
     ?UNTIL(stream_test_grain:records_read(Grain1) >= length(RcrdList)),
 
@@ -84,7 +84,7 @@ grain_wakeup(_Config) ->
     Topic = <<"wakeup-topic">>,
     Grain1 = erleans:get_grain(stream_test_grain, <<"wakeup-grain">>),
     RcrdList = lists:duplicate(10 + rand:uniform(100), <<"repeated wakeup record">>),
-    produce(Topic, RcrdList),
+    erleans_test_utils:produce(Topic, RcrdList),
     ok = stream_test_grain:subscribe(Grain1, Topic),
     {ok, GrainPid} =
         (fun Loop(0) ->
@@ -109,7 +109,7 @@ grain_wakeup(_Config) ->
     RcrdList2 = lists:duplicate(10 + rand:uniform(100), <<"repeated wakeup record 2">>),
     Len2 = length(RcrdList2),
     ct:pal("doing produce 2 with ~p records", [Len2]),
-    produce(Topic, RcrdList2),
+    erleans_test_utils:produce(Topic, RcrdList2),
     {ok, _GrainPid1} =
         (fun Loop(0) ->
                  {error, took_too_long};
@@ -135,7 +135,7 @@ grain_wakeup(_Config) ->
     ?UNTIL(erleans_pm:whereis_name(Grain1) =:= undefined andalso
            is_process_alive(GrainPid) =:= false),
 
-    produce(Topic, RcrdList2),
+    erleans_test_utils:produce(Topic, RcrdList2),
 
     %% negative test, 500ms
     {error, took_too_long} =
@@ -149,15 +149,3 @@ grain_wakeup(_Config) ->
          end)(10),
 
     ok.
-
-%%%% utils
-
-produce(Topic, Records) ->
-    case application:get_env(erleans, db_testing, false) of
-        false ->
-            [true] = test_stream:produce([{Topic, Records}]);
-        _ ->
-            ok = vg_client_pool:start(),
-            {ok, HWM} = vg_client:produce(Topic, Records),
-            ct:pal("wrote records to vgt, hwm = ~p", [HWM])
-    end.
