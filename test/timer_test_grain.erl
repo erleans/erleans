@@ -71,7 +71,7 @@ stop(Ref) ->
     erleans_grain:call(Ref, stop).
 
 activate(_, State=#{}) ->
-    {ok, State#{acc => []}, #{life_time => infinity}}.
+    {ok, State#{acc => []}, #{}}.
 
 handle_call(node, _From, State) ->
     {reply, {ok, node()}, State};

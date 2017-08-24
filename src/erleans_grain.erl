@@ -86,24 +86,23 @@
                      placement/0]).
 
 -record(state,
-       { cb_module             :: module(),
-         cb_state              :: cb_state(),
+       { cb_module            :: module(),
+         cb_state             :: cb_state(),
 
-         id                    :: term(),
-         etag                  :: integer(),
-         provider              :: term(),
-         ref                   :: erleans:grain_ref(),
-         create_time           :: non_neg_integer(),
-         lease_time            :: non_neg_integer() | infinity,
-         lease_timer           :: reference() | undefined,
-         deactivating = false  :: boolean()
+         id                   :: term(),
+         etag                 :: integer(),
+         provider             :: term(),
+         ref                  :: erleans:grain_ref(),
+         create_time          :: non_neg_integer(),
+         deactivate_after     :: non_neg_integer() | infinity,
+         activation_timer     :: reference() | undefined,
+         deactivating = false :: boolean()
        }).
 
 -type opts() :: #{ref    => binary(),
                   etag   => integer(),
 
-                  lease_time => non_neg_integer() | infinity,
-                  life_time => non_neg_integer() | infinity
+                  deactivate_after => non_neg_integer() | infinity
                  }.
 
 -export_types([opts/0]).
@@ -155,8 +154,8 @@ cast(GrainRef, Request) ->
     ReqType = req_type(GrainRef),
     do_for_ref(GrainRef, fun(Pid) -> gen_server:cast(Pid, {ReqType, Request}) end).
 
-req_type(GrainRef) when is_map(GrainRef) -> refresh_lease;
-req_type(GrainRef) when is_pid(GrainRef) -> leave_lease.
+req_type(GrainRef) when is_map(GrainRef) -> refresh_timer;
+req_type(GrainRef) when is_pid(GrainRef) -> leave_timer.
 
 do_for_ref(GrainPid, Fun) when is_pid(GrainPid) ->
     Fun(GrainPid);
@@ -265,44 +264,44 @@ init([GrainRef=#{id := Id,
 init_(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbState1) ->
     {CbState2, ETag1} = verify_etag(CbModule, Id, Provider, ETag, CbState1),
     CreateTime = maps:get(create_time, GrainOpts, erlang:system_time(seconds)),
-    LeaseTime = maps:get(lease_time, GrainOpts, erleans_config:get(default_lease_time)),
-    State = #state{cb_module   = CbModule,
-                   cb_state    = CbState2,
+    DeactivateAfter = maps:get(deactivate_after, GrainOpts, erleans_config:get(deactivate_after)),
+    State = #state{cb_module        = CbModule,
+                   cb_state         = CbState2,
 
-                   id          = Id,
-                   etag        = ETag1,
-                   provider    = Provider,
-                   ref         = GrainRef,
-                   create_time = CreateTime,
-                   lease_time  = LeaseTime,
-                   lease_timer = lease_timer(LeaseTime, undefined)
+                   id               = Id,
+                   etag             = ETag1,
+                   provider         = Provider,
+                   ref              = GrainRef,
+                   create_time      = CreateTime,
+                   deactivate_after = DeactivateAfter,
+                   activation_timer = activation_timer(DeactivateAfter, undefined)
                   },
     {ok, State}.
 
 handle_call({ReqType, Msg}, From, State=#state{cb_module=CbModule,
                                                cb_state=CbState,
-                                               lease_time=LeaseTime,
-                                               lease_timer=LeaseTimer}) ->
-    handle_reply(CbModule:handle_call(Msg, From, CbState), upd_lease(ReqType, LeaseTime, LeaseTimer, State)).
+                                               deactivate_after=DeactivateAfter,
+                                               activation_timer=ActivationTimer}) ->
+    handle_reply(CbModule:handle_call(Msg, From, CbState), upd_timer(ReqType, DeactivateAfter, ActivationTimer, State)).
 
 handle_cast({ReqType, Msg}, State=#state{cb_module=CbModule,
                                          cb_state=CbState,
-                                         lease_time=LeaseTime,
-                                         lease_timer=LeaseTimer}) ->
-    handle_reply(CbModule:handle_cast(Msg, CbState), upd_lease(ReqType, LeaseTime, LeaseTimer, State)).
+                                         deactivate_after=DeactivateAfter,
+                                         activation_timer=ActivationTimer}) ->
+    handle_reply(CbModule:handle_cast(Msg, CbState), upd_timer(ReqType, DeactivateAfter, ActivationTimer, State)).
 
-upd_lease(leave_lease, _, _, State) ->
+upd_timer(leave_timer, _, _, State) ->
     State;
-upd_lease(refresh_lease, LeaseTime, LeaseTimer, State) ->
+upd_timer(refresh_timer, DeactivateAfter, ActivationTimer, State) ->
     case State#state.deactivating of
         true ->
             erleans_timer:recover();
         _ -> ok
     end,
-    State#state{lease_timer = lease_timer(LeaseTime, LeaseTimer),
+    State#state{activation_timer = activation_timer(DeactivateAfter, ActivationTimer),
                 deactivating = false}.
 
-handle_info(lease_expiry, State) ->
+handle_info(activation_expiry, State) ->
     finalize_and_stop(State, true);
 handle_info(check_timers, State = #state{deactivating = false}) ->
     {noreply, State};
@@ -456,12 +455,12 @@ replace_state(CbModule, {Provider, ProviderName}, Id, State, ETag, NewETag) ->
             exit(Reason)
     end.
 
-lease_timer(0, _) -> infinity;
-lease_timer(X, undefined) ->
-    erlang:send_after(X, self(), lease_expiry);
-lease_timer(X, Ref) ->
+activation_timer(0, _) -> infinity;
+activation_timer(X, undefined) ->
+    erlang:send_after(X, self(), activation_expiry);
+activation_timer(X, Ref) ->
     erlang:cancel_timer(Ref, [{async, true}]),  % is this a good idea? what if there's a race?
-    erlang:send_after(X, self(), lease_expiry).
+    erlang:send_after(X, self(), activation_expiry).
 
 maybe_enqueue_grain(GrainRef = #{placement := {stateless, _}}) ->
     erleans_stateless:enqueue_grain(GrainRef, self());

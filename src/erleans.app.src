@@ -19,9 +19,7 @@
     vonnegut
    ]},
   {modules, []},
-  {env, [{default_lease_time, 2700000}, %% 45 minutes
-         {default_life_time, 0},
-         {default_eval_interval, 60},
+  {env, [{deactivate_after, 2700000}, %% 45 minutes
 
          {num_partitions, 128}]},
 

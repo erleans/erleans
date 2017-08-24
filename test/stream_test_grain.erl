@@ -47,7 +47,7 @@ records_read(Ref) ->
 
 activate(#{id := _Id}, State=#{}) ->
     ct:pal("starting or waking up? ~p", [State]),
-    {ok, State, #{life_time => infinity}}.
+    {ok, State, #{}}.
 
 handle_call({subscribe, Topic, Offset}, _From, State) ->
     StreamProvider = erleans_config:get(default_stream_provider),

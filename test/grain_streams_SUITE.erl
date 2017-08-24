@@ -33,7 +33,7 @@ end_per_suite(_Config) ->
 init_per_testcase(no_stream_config_check, Config) ->
     application:load(erleans),
     application:unset_env(erleans, stream_providers),
-    application:set_env(erleans, default_lease_time, 60000),
+    application:set_env(erleans, deactivate_after, 60000),
     {ok, _} = application:ensure_all_started(erleans),
     Config;
 init_per_testcase(grain_wakeup, Config) ->
@@ -45,7 +45,7 @@ init_per_testcase(_, Config) ->
 
 init(LeaseTime) ->
     application:load(erleans),
-    application:set_env(erleans, default_lease_time, LeaseTime),
+    application:set_env(erleans, deactivate_after, LeaseTime),
     {ok, _} = application:ensure_all_started(erleans).
 
 end_per_testcase(_, _Config) ->
