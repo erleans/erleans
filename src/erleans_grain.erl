@@ -56,8 +56,6 @@
 
 -type action() :: save_state | {save, any()}.
 
-%-type state() :: active | deactivating.
-
 -callback activate(Ref :: erleans:grain_ref(), Arg :: term()) ->
     {ok, Data :: cb_state(), opts()} |
     ignore |
@@ -142,7 +140,7 @@ call(GrainRef, Request) ->
 
 -spec call(GrainRef :: erleans:grain_ref(), Request :: term(), non_neg_integer() | infinity) -> Reply :: term().
 call(GrainRef, Request, Timeout) ->
-    ReqType = req_type(GrainRef),
+    ReqType = req_type(),
     do_for_ref(GrainRef, fun(Pid) ->
                              try
                                  gen_statem:call(Pid, {ReqType, Request}, Timeout)
@@ -155,11 +153,16 @@ call(GrainRef, Request, Timeout) ->
 
 -spec cast(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 cast(GrainRef, Request) ->
-    ReqType = req_type(GrainRef),
+    ReqType = req_type(),
     do_for_ref(GrainRef, fun(Pid) -> gen_statem:cast(Pid, {ReqType, Request}) end).
 
-req_type(GrainRef) when is_map(GrainRef) -> refresh_timer;
-req_type(GrainRef) when is_pid(GrainRef) -> leave_timer.
+req_type() ->
+    case get(req_type) of
+        undefined ->
+            refresh_timer;
+        ReqType ->
+            ReqType
+    end.
 
 do_for_ref(GrainPid, Fun) when is_pid(GrainPid) ->
     Fun(GrainPid);
@@ -277,7 +280,7 @@ init_(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1) ->
                  provider         = Provider,
                  ref              = GrainRef,
                  create_time      = CreateTime,
-                 deactivate_after = case DeactivateAfter of 0 -> infinity; _ -> DeactivateAfter end,
+                 deactivate_after = case DeactivateAfter of 0 -> infinity; _ -> DeactivateAfter end
                 },
     {ok, active, Data}.
 
@@ -354,6 +357,11 @@ upd_timer(refresh_timer, DeactivateAfter) ->
 
 %% If a recoverable stop (meaning we are stopping because the activation expired)
 %% first cancel timers and wait until all currently running callbacks have completed
+%%
+%% Note: a grain returning `stop` is treated as non-recoverable. Because grains are
+%% automatically started when referenced stopping doesn't make much sense in the
+%% traditional sense. Maybe it should be removed or at least renamed and maybe act as
+%% recoverable?
 finalize_and_stop(Data, _Recoverable=true) ->
     %% first, cancel all timers, see if anything is ticking, if no,
     %% then we need to wait to see if we can shut down

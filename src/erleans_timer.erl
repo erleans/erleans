@@ -65,9 +65,9 @@ start(Callback, Args, StartTime, Period) ->
         undefined ->
             {error, called_outside_of_grain_context};
         GrainRef ->
-            Grain = self(),
+            GrainPid = self(),
             Timer =
-                #timer{grain = Grain,
+                #timer{grain = GrainPid,
                        grain_ref = GrainRef,
                        callback = Callback,
                        args = Args,
@@ -160,20 +160,21 @@ recover() ->
 %%% internal functions %%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%
 
-loop(FireTime, #timer{grain = Grain,
+loop(FireTime, #timer{grain = Pid,
+                      grain_ref = GrainRef,
                       callback = Callback,
                       args = Args,
                       period = Period} = Timer) ->
     receive
         ?cancel ->
-            unlink(Grain),
+            unlink(Pid),
             ok;
         ?tick ->
-            try Callback(Grain, Args) of
+            try Callback(GrainRef, Args) of
                 _ ->
                     case Period of
                         never ->
-                            unlink(Grain),
+                            unlink(Pid),
                             ok;
                         _ ->
                             NextFire = FireTime + Period,
@@ -182,18 +183,21 @@ loop(FireTime, #timer{grain = Grain,
                             loop(NextFire, Timer)
                     end
             catch Class:Error ->
-                    Grain ! {erleans_timer_error, Class, Error},
-                    unlink(Grain)
+                    Pid ! {erleans_timer_error, Class, Error},
+                    unlink(Pid)
             end;
         Msg ->
-            Grain ! {erleans_timer_unexpected_msg, Msg}
+            Pid ! {erleans_timer_unexpected_msg, Msg}
     end.
 
 start_timer(StartTime, Timer) ->
     spawn_link(fun() ->
-                       Now = erlang:monotonic_time(milli_seconds),
-                       FirstFire = Now + StartTime,
-                       erlang:send_after(FirstFire, self(), ?tick,
-                                         [{abs, true}]),
-                       loop(FirstFire, Timer)
+                   %% requests to a grain from a timer callback
+                   %% do not reset the activation expiry timer
+                   put(req_type, leave_timer),
+                   Now = erlang:monotonic_time(milli_seconds),
+                   FirstFire = Now + StartTime,
+                   erlang:send_after(FirstFire, self(), ?tick,
+                                     [{abs, true}]),
+                   loop(FirstFire, Timer)
                end).
