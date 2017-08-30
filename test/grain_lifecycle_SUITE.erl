@@ -156,6 +156,7 @@ request_types(_Config) ->
 
     _Pinger =
         spawn(fun () ->
+                      put(req_type, leave_timer),
                       [begin
                            timer:sleep(6),
                            Ct = (catch test_grain:activated_counter(GrainPid)),
