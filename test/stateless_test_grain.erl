@@ -15,10 +15,10 @@
          deactivated_counter/1,
          activated_counter/1]).
 
--export([activate/2,
+-export([state/1,
+         activate/2,
          handle_call/3,
          handle_cast/2,
-         handle_info/2,
          deactivate/1]).
 
 -include("erleans.hrl").
@@ -38,32 +38,29 @@ activated_counter(Ref) ->
 node(Ref) ->
     erleans_grain:call(Ref, node).
 
-activate(_, State=#{activated_counter := Counter}) ->
-    {ok, State#{activated_counter => Counter+1}, #{}};
-activate(_, State=#{}) ->
-    {ok, State#{activated_counter => 1}, #{}}.
+state(_) ->
+    #{activated_counter => 0,
+      deactivated_counter => 0}.
 
-handle_call(node, _From, State) ->
-    {reply, {ok, node()}, State};
-handle_call(deactivated_counter, _From, State=#{deactivated_counter := Counter}) ->
-    {reply, {ok, Counter}, State};
-handle_call(deactivated_counter, _From, State) ->
-    {reply, {ok, 0}, State};
-handle_call(activated_counter, _From, State=#{activated_counter := Counter}) ->
-    {reply, {ok, Counter}, State};
-handle_call(activated_counter, _From, State) ->
-    {reply, {ok, 0}, State}.
+activate(_, State=#{activated_counter := Counter}) ->
+    {ok, State#{activated_counter => Counter+1}, #{}}.
+
+handle_call(node, From, State) ->
+    {ok, State, [{reply, From, {ok, node()}}]};
+handle_call(deactivated_counter, From, State=#{deactivated_counter := Counter}) ->
+    {ok, State, [{reply, From, {ok, Counter}}]};
+handle_call(deactivated_counter, From, State) ->
+    {ok, State, [{reply, From, {ok, 0}}]};
+handle_call(activated_counter, From, State=#{activated_counter := Counter}) ->
+    {ok, State, [{reply, From, {ok, Counter}}]};
+handle_call(activated_counter, From, State) ->
+    {ok, State, [{reply, From, {ok, 0}}]}.
 
 handle_cast(_, State) ->
     {noreply, State}.
 
-handle_info(_, State) ->
-    {noreply, State}.
-
 deactivate(State=#{deactivated_counter := D}) ->
-    {save, State#{deactivated_counter => D+1}};
-deactivate(State) ->
-    {save, State#{deactivated_counter => 1}}.
+    {ok, State#{deactivated_counter => D+1}}.
 
 %%%===================================================================
 %%% Internal functions

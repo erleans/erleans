@@ -19,17 +19,13 @@
 
 -export([placement/0,
          provider/0,
+         state/1,
          activate/2,
          handle_call/3,
          handle_cast/2,
-         handle_info/2,
          deactivate/1]).
 
 -include("erleans.hrl").
-
--define(INIT_STATE, #{persistent => #{activated_counter => 1,
-                                      deactivated_counter => 0},
-                      ephemeral => #{counter => 0}}).
 
 placement() ->
     prefer_local.
@@ -55,36 +51,31 @@ save(Ref) ->
 node(Ref) ->
     erleans_grain:call(Ref, node).
 
-activate(_, PState=#{activated_counter := Counter}) ->
-    {ok, ?INIT_STATE#{persistent => PState#{activated_counter => Counter+1}}, #{}};
-activate(_, #{}) ->
-    {ok, ?INIT_STATE, #{}}.
+state(_) ->
+    #{activated_counter => 0,
+      deactivated_counter => 0}.
 
-handle_call(node, _From, State) ->
-    {reply, {ok, node()}, State};
-handle_call(increment_ephemeral_counter, _From, State=#{ephemeral := EState=#{counter := Counter}}) ->
-    {save_reply, ok, State#{ephemeral => EState#{counter => Counter+1}}};
-handle_call(ephemeral_counter, _From, State=#{ephemeral := #{counter := Counter}}) ->
-    {reply, {ok, Counter}, State};
-handle_call(deactivated_counter, _From, State=#{persistent := #{deactivated_counter := Counter}}) ->
-    {reply, {ok, Counter}, State};
-handle_call(deactivated_counter, _From, State) ->
-    {reply, {ok, 0}, State};
-handle_call(activated_counter, _From, State=#{persistent := #{activated_counter := Counter}}) ->
-    {reply, {ok, Counter}, State};
-handle_call(activated_counter, _From, State) ->
-    {reply, {ok, 0}, State};
-handle_call(save, _From, State) ->
-    {save_reply, ok, State}.
+activate(_, PState=#{activated_counter := Counter}) ->
+    {ok, {#{counter => 0}, PState#{activated_counter => Counter+1}}, #{}}.
+
+handle_call(node, From, State) ->
+    {ok, State, [{reply, From, {ok, node()}}]};
+handle_call(increment_ephemeral_counter, From, {EState=#{counter := Counter}, PState}) ->
+    {ok, {EState#{counter => Counter+1}, PState}, [{reply, From, ok}, save_state]};
+handle_call(ephemeral_counter, From, State={#{counter := Counter}, _}) ->
+    {ok, State, [{reply, From, {ok, Counter}}]};
+handle_call(deactivated_counter, From, State={_, #{deactivated_counter := Counter}}) ->
+    {ok, State, [{reply, From, {ok, Counter}}]};
+handle_call(activated_counter, From, State={_, #{activated_counter := Counter}}) ->
+    {ok, State, [{reply, From, {ok, Counter}}]};
+handle_call(save, From, State) ->
+    {ok, State, [{reply, From, ok}, save_state]}.
 
 handle_cast(_, State) ->
-    {noreply, State}.
+    {ok, State}.
 
-handle_info(_, State) ->
-    {noreply, State}.
-
-deactivate(State=#{persistent := PState=#{deactivated_counter := D}}) ->
-    {save, State#{persistent => PState#{deactivated_counter => D+1}}}.
+deactivate({EState, PState=#{deactivated_counter := D}}) ->
+    {save_state, {EState, PState#{deactivated_counter => D+1}}}.
 
 %%%===================================================================
 %%% Internal functions

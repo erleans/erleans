@@ -49,36 +49,36 @@ activate(#{id := _Id}, State=#{}) ->
     ct:pal("starting or waking up? ~p", [State]),
     {ok, State, #{}}.
 
-handle_call({subscribe, Topic, Offset}, _From, State) ->
+handle_call({subscribe, Topic, Offset}, From, State) ->
     StreamProvider = erleans_config:get(default_stream_provider),
     Ret = erleans_grain:subscribe(StreamProvider, Topic, Offset),
-    {reply, Ret, State};
-handle_call({unsubscribe, Topic}, _From, State) ->
+    {ok, State, [{reply, From, Ret}]};
+handle_call({unsubscribe, Topic}, From, State) ->
     StreamProvider = erleans_config:get(default_stream_provider),
     Ret = erleans_grain:unsubscribe(StreamProvider, Topic),
-    {reply, Ret, State};
-handle_call(records_read, _From, State) ->
+    {ok, State, [{reply, From, Ret}]};
+handle_call(records_read, From, State) ->
     RecordsRead = maps:get(records_read, State, 0),
-    {reply, RecordsRead, State};
-handle_call(reset, _From, State) ->
-    {reply, ok, State#{records_read => 0}};
-handle_call({stream, _Topic, Records}, _, State) ->
+    {ok, State, [{reply, From, RecordsRead}]};
+handle_call(reset, From, State) ->
+    {ok, State#{records_read => 0}, [{reply, From, ok}]};
+handle_call({stream, _Topic, Records}, From, State) ->
     RecordsRead = maps:get(records_read, State, 0),
     ct:pal("got stream message for topic ~p with ~p records, ~p previous",
            [_Topic, length(Records), RecordsRead]),
     ct:pal("records ~p", [Records]),
     Len = length(Records),
-    {reply, ok, State#{records_read => RecordsRead + Len}}.
+    {ok, State#{records_read => RecordsRead + Len}, [{reply, From, ok}]}.
 
 handle_cast(_, State) ->
-    {noreply, State}.
+    {ok, State}.
 
 handle_info(_, State) ->
-    {noreply, State}.
+    {ok, State}.
 
 deactivate(State) ->
     ct:pal("shutting down! ~p", [State]),
-    {save, State}.
+    {ok, State}.
 
 %%%===================================================================
 %%% Internal functions

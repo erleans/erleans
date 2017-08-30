@@ -39,22 +39,13 @@
 -callback insert(Type :: module(), ProviderName :: atom(), Id :: any(), Hash :: integer(),
                  State :: any(), ETag :: erleans:etag()) -> ok.
 
--callback update(Type :: module(), ProviderName :: atom(), Id :: any(), Update :: list(),
-                 ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
-    ok |
-    {error, {bad_etag, erleans:etag(), erleans:etag()}} |
-    {error, not_found}.
-
-%% Not all backends are going to be able to provide per-field update functionality
--optional_callbacks([update/6]).
-
--callback replace(Type :: module(), ProviderName :: atom(), Id :: any(), State :: any(),
+-callback update(Type :: module(), ProviderName :: atom(), Id :: any(), State :: any(),
                   ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
     ok |
     {error, {bad_etag, erleans:etag(), erleans:etag()}} |
     {error, not_found}.
 
--callback replace(Type :: module(), ProviderName :: atom(), Id :: any(), Hash :: integer(),
+-callback update(Type :: module(), ProviderName :: atom(), Id :: any(), Hash :: integer(),
                   State :: any(), ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
     ok |
     {error, {bad_etag, erleans:etag(), erleans:etag()}} |

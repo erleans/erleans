@@ -73,25 +73,25 @@ stop(Ref) ->
 activate(_, State=#{}) ->
     {ok, State#{acc => []}, #{}}.
 
-handle_call(node, _From, State) ->
-    {reply, {ok, node()}, State};
+handle_call(node, From, State) ->
+    {ok, State, [{reply, From, {ok, node()}}]};
 
-handle_call(clear, _From, State = #{acc := Acc}) ->
-    {reply, {ok, Acc}, State#{acc => []}};
-handle_call({accumulate, Thing}, _From, State=#{acc := Acc}) ->
-    {reply, ok, State#{acc => [Thing | Acc]}};
+handle_call(clear, From, State = #{acc := Acc}) ->
+    {ok, State#{acc => []}, [{reply, From, {ok, Acc}}]};
+handle_call({accumulate, Thing}, From, State=#{acc := Acc}) ->
+    {ok, State#{acc => [Thing | Acc]}, [{reply, From, ok}]};
 
-handle_call(start_timers, _From, State) ->
+handle_call(start_timers, From, State) ->
     %% pattern should be [b, a, c, b, c, b, ...]
     {ok, One} = erleans_timer:start(fun acc/2, a, 10, never),
     {ok, Two} = erleans_timer:start(fun acc/2, b, 5, 10),
     {ok, Three} = erleans_timer:start(fun acc/2, c, 12, 10),
-    {reply, ok, State#{timers => [One, Two, Three]}};
-handle_call(cancel_timers, _From, State = #{timers := Timers}) ->
+    {ok, State#{timers => [One, Two, Three]}, [{reply, From, ok}]};
+handle_call(cancel_timers, From, State = #{timers := Timers}) ->
     [erleans_timer:cancel(Timer) || Timer <- Timers],
-    {reply, ok, State};
+    {ok, State, [{reply, From, ok}]};
 
-handle_call(crashy_timer, _From, State) ->
+handle_call(crashy_timer, From, State) ->
     F = fun(Ref, Arg) ->
                 case get(crash) of
                     5 -> exit(boom);
@@ -103,9 +103,9 @@ handle_call(crashy_timer, _From, State) ->
                 timer_test_grain:accumulate(Ref, Arg)
          end,
     erleans_timer:start(F, a, 5, 5),
-    {reply, ok, State};
+    {ok, State, [{reply, From, ok}]};
 
-handle_call(long_timer, _From, State) ->
+handle_call(long_timer, From, State) ->
     F1 = fun(Ref, Arg) ->
                  timer:sleep(90),
                  timer_test_grain:accumulate(Ref, {Arg, self()})
@@ -115,28 +115,28 @@ handle_call(long_timer, _From, State) ->
          end,
     erleans_timer:start(F1, long, 1, 1000),
     erleans_timer:start(F2, short, 5, 15),
-    {reply, ok, State};
+    {ok, State, [{reply, From, ok}]};
 
-handle_call(start_one_timer, _From, State) ->
+handle_call(start_one_timer, From, State) ->
     erleans_timer:start(fun acc/2, a, 5, 10),
-    {reply, ok, State};
-handle_call(cancel_one_timer, _From, State) ->
+    {ok, State, [{reply, From, ok}]};
+handle_call(cancel_one_timer, From, State) ->
     erleans_timer:cancel(),
-    {reply, ok, State};
+    {ok, State, [{reply, From, ok}]};
 
-handle_call(stop, _From, State) ->
-    {stop, normal, ok, State};
+handle_call(stop, From, State) ->
+    {deactivate, State, [{reply, From, ok}]};
 
-handle_call(save, _From, State) ->
-    {save_reply, ok, State}.
+handle_call(save, From, State) ->
+    {ok, State, [{reply, From, ok}, save_state]}.
 
 handle_cast(_, State) ->
-    {noreply, State}.
+    {ok, State}.
 
 handle_info(Msg, State = #{acc := Acc}) ->
-    {noreply, State#{acc => [Msg | Acc]}};
+    {ok, State#{acc => [Msg | Acc]}};
 handle_info(_, State) ->
-    {noreply, State}.
+    {ok, State}.
 
 deactivate(State) ->
     {ok, State}.
