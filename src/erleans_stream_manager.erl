@@ -317,7 +317,7 @@ save(Id, Partition, Value, undefined, {ProviderModule, ProviderName}) ->
     ETag;
 save(Id, Partition, Value, OldETag, {ProviderModule, ProviderName}) ->
     ETag = erlang:phash2(Value),
-    ProviderModule:replace(erleans_stream, ProviderName, Id, Partition, Value, OldETag, ETag),
+    ProviderModule:update(erleans_stream, ProviderName, Id, Partition, Value, OldETag, ETag),
     ETag.
 
 delete(Id, {ProviderModule, ProviderName}) ->

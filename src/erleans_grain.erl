@@ -383,11 +383,11 @@ finalize_and_stop(Data=#data{cb_module=CbModule,
     erleans_pm:unregister_name(Ref, self()),
     case erleans_utils:fun_or_default(CbModule, deactivate, 1, [CbData], {ok, CbData}) of
         {save_state, NewCbData={_, PersistentState}} ->
-            NewETag = replace_state(CbModule, Provider, Id, PersistentState, ETag),
+            NewETag = update_state(CbModule, Provider, Id, PersistentState, ETag),
             {stop, {shutdown, deactivated}, Data#data{cb_state=NewCbData,
                                                       etag=NewETag}};
         {save_state, NewCbData} ->
-            NewETag = replace_state(CbModule, Provider, Id, NewCbData, ETag),
+            NewETag = update_state(CbModule, Provider, Id, NewCbData, ETag),
             {stop, {shutdown, deactivated}, Data#data{cb_state=NewCbData,
                                                       etag=NewETag}};
         {ok, NewCbData} ->
@@ -418,28 +418,28 @@ handle_actions([{info, Msg} | Rest], ActionsAcc, CbData, Data) ->
 handle_actions([R={reply, _, _} | Rest], ActionsAcc, CbData, Data) ->
     handle_actions(Rest, [R | ActionsAcc], CbData, Data);
 handle_actions([save_state | Rest], ActionsAcc, CbData, Data) ->
-    NewETag = replace_state(CbData, Data),
+    NewETag = update_state(CbData, Data),
     handle_actions(Rest, ActionsAcc, CbData, Data#data{etag=NewETag});
 handle_actions([A | _Rest], _ActionsAcc, _CbData, _Data) ->
     %% unknown action, exit with reason bad_action
     exit({bad_action, A}).
 
-replace_state({_Ephemeral, Persistent}, Data) ->
-    replace_state(Persistent, Data);
-replace_state(CbData, #data{id=Id,
+update_state({_Ephemeral, Persistent}, Data) ->
+    update_state(Persistent, Data);
+update_state(CbData, #data{id=Id,
                             cb_module=CbModule,
                             provider=Provider,
                             etag=ETag}) ->
-    replace_state(CbModule, Provider, Id, CbData, ETag).
+    update_state(CbModule, Provider, Id, CbData, ETag).
 
-replace_state(_CbModule, undefined, _Id, _CbData, _ETag) ->
+update_state(_CbModule, undefined, _Id, _CbData, _ETag) ->
     exit(?NO_PROVIDER_ERROR);
-replace_state(CbModule, Provider, Id, CbData, ETag) ->
+update_state(CbModule, Provider, Id, CbData, ETag) ->
     NewETag = etag(CbData),
-    replace_state(CbModule, Provider, Id, CbData, ETag, NewETag).
+    update_state(CbModule, Provider, Id, CbData, ETag, NewETag).
 
-replace_state(CbModule, {Provider, ProviderName}, Id, Data, ETag, NewETag) ->
-    case Provider:replace(CbModule, ProviderName, Id, Data, ETag, NewETag) of
+update_state(CbModule, {Provider, ProviderName}, Id, Data, ETag, NewETag) ->
+    case Provider:update(CbModule, ProviderName, Id, Data, ETag, NewETag) of
         ok ->
             NewETag;
         {error, Reason} ->

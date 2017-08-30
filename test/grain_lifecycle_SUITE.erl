@@ -66,7 +66,7 @@ bad_etag_save(_Config) ->
     OldETag = erlang:phash2(#{activated_counter => 1, deactivated_counter => 0}),
     NewState = #{activated_counter => 2, deactivated_counter => 0},
     NewETag = erlang:phash2(NewState),
-    ok = ProviderModule:replace(test_grain, ProviderName, <<"bad-etag-save-grain">>, NewState, OldETag, NewETag),
+    ok = ProviderModule:update(test_grain, ProviderName, <<"bad-etag-save-grain">>, NewState, OldETag, NewETag),
 
     %% Now a save call should crash the grain
     ?assertMatch({exit, saved_etag_changed}, test_grain:save(Grain)),

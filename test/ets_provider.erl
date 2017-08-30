@@ -9,8 +9,8 @@
          read_by_hash/3,
          insert/5,
          insert/6,
-         replace/6,
-         replace/7,
+         update/6,
+         update/7,
          delete/3]).
 
 -define(TAB, ets_provider_tab).
@@ -49,10 +49,10 @@ insert(Type, _ProviderName, Id, Hash, State, ETag) ->
     true = ets:insert(?TAB, {Id, Type, Hash, ETag, State}),
     ok.
 
-replace(Type, ProviderName, Id, State, ETag, NewETag) ->
-    replace(Type, ProviderName, Id, erlang:phash2({Id, Type}), State, ETag, NewETag).
+update(Type, ProviderName, Id, State, ETag, NewETag) ->
+    update(Type, ProviderName, Id, erlang:phash2({Id, Type}), State, ETag, NewETag).
 
-replace(Type, _ProviderName, Id, Hash, State, ETag, NewETag) ->
+update(Type, _ProviderName, Id, Hash, State, ETag, NewETag) ->
     case ets:lookup(?TAB, Id) of
         [{Id, Type, _, E, _}] when E =:= ETag ->
             true = ets:insert(?TAB, {Id, Type, Hash, NewETag, State}),

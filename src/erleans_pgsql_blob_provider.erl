@@ -32,8 +32,8 @@
          read_by_hash/3,
          insert/5,
          insert/6,
-         replace/6,
-         replace/7]).
+         update/6,
+         update/7]).
 
 -include("erleans.hrl").
 
@@ -84,11 +84,11 @@ insert(Type, ProviderName, Id, State, ETag) ->
 insert(Type, ProviderName, Id, Hash, State, ETag) ->
     do(ProviderName, fun(C) -> insert_(Id, Type, Hash, ETag, State, C) end).
 
-replace(Type, ProviderName, Id, State, OldETag, NewETag) ->
-    replace(Type, ProviderName, Id, erlang:phash2({Id, Type}), State, OldETag, NewETag).
+update(Type, ProviderName, Id, State, OldETag, NewETag) ->
+    update(Type, ProviderName, Id, erlang:phash2({Id, Type}), State, OldETag, NewETag).
 
-replace(Type, ProviderName, Id, Hash, State, OldETag, NewETag) ->
-    do(ProviderName, fun(C) -> replace_(Id, Type, Hash, OldETag, NewETag, State, C) end).
+update(Type, ProviderName, Id, Hash, State, OldETag, NewETag) ->
+    do(ProviderName, fun(C) -> update_(Id, Type, Hash, OldETag, NewETag, State, C) end).
 
 %%%
 
@@ -149,7 +149,7 @@ insert_(Id, Type, RefHash, GrainETag, GrainState, C) ->
                                                                GrainETag, term_to_binary(GrainState)],
                                                            {pgsql_connection, C}).
 
-replace_(Id, Type, RefHash, OldGrainETag, NewGrainETag, GrainState, C) ->
+update_(Id, Type, RefHash, OldGrainETag, NewGrainETag, GrainState, C) ->
     Q = query(update),
     IdBin = term_to_binary(Id),
     case pgsql_connection:extended_query(Q, [NewGrainETag, term_to_binary(GrainState), RefHash, IdBin,
