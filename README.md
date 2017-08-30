@@ -74,10 +74,12 @@ activated_counter(Ref) ->
 node(Ref) ->
     erleans_grain:call(Ref, node).
 
-activate(_Grainref, State=#{activated_counter := Counter}) ->
-    {ok, State#{activated_counter => Counter+1}, #{}};
-activate(_Grainref, State=#{}) ->
-    {ok, State#{activated_counter => 1}, #{}}.
+state(_) ->
+    #{activated_counter => 0,
+      deactivated_counter => 0}.
+
+activate(_, State=#{activated_counter := Counter}) ->
+    {ok, State#{activated_counter => Counter+1}, #{}}.
 ```
 
 ```erlang

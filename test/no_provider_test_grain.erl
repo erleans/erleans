@@ -16,7 +16,6 @@
 -export([activate/2,
          handle_call/3,
          handle_cast/2,
-         handle_info/2,
          deactivate/1]).
 
 -include("erleans.hrl").
@@ -33,17 +32,14 @@ save(Ref) ->
 activate(_, State) ->
     {ok, State, #{}}.
 
-handle_call(hello, _From, State) ->
-    {reply, hello, State};
-handle_call(save, _From, State) ->
+handle_call(hello, From, State) ->
+    {ok, State, [{reply, From, hello}]};
+handle_call(save, From, State) ->
     %% will throw an exception
-    {save_reply, ok, State}.
+    {ok, State, [{reply, From, ok}, save_state]}.
 
 handle_cast(_, State) ->
-    {noreply, State}.
-
-handle_info(_, State) ->
-    {noreply, State}.
+    {ok, State}.
 
 deactivate(State) ->
     {ok, State}.

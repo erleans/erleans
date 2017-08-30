@@ -51,42 +51,44 @@
 -define(DEFAULT_TIMEOUT, 5000).
 -define(NO_PROVIDER_ERROR, no_provider_configured).
 
--type cb_state() :: term() | #{persistent := term(),
-                               ephemeral  := term()}.
+-type cb_state() :: {EphemeralState :: term(), PersistentState :: term()} | term().
 
--type action() :: save_state | {save, any()}.
+-type from() :: {pid(), term()}.
 
--callback activate(Ref :: erleans:grain_ref(), Arg :: term()) ->
-    {ok, Data :: cb_state(), opts()} |
-    ignore |
-    {stop, Reason :: term()}.
+-type action() :: {reply, From :: from(), Reply :: term()} |
+                  {cast, Msg :: term()} |
+                  {info, Msg :: term()} |
+                  save_state.
 
 -callback provider() -> module().
 
 -callback placement() -> erleans:grain_placement().
 
--callback handle_call(Msg :: term(), From :: pid(), CbData :: cb_state()) ->
-    {reply, Reply :: term(), CbData :: cb_state()} |
-    {reply, Reply :: term(), CbData :: cb_state(), [action()]} |
-    {stop, Reason :: term(), Reply :: term(), CbData :: cb_state()}.
+-callback state(Id :: term()) -> term().
 
--callback handle_cast(Msg :: term(), CbData :: cb_state()) ->
-    {noreply, CbData :: cb_state()} |
-    {save, CbData :: cb_state()} |
-    {save, Updates :: maps:map(), CbData :: cb_state()}.
+-callback activate(Ref :: erleans:grain_ref(), Arg :: term()) -> {ok, Data :: cb_state(), opts()} |
+                                                                 ignore |
+                                                                 {error, Reason :: term()}.
 
--callback handle_info(Msg :: term(), CbData :: cb_state()) ->
-    {noreply, CbData :: cb_state()} |
-    {save, CbData :: cb_state()} |
-    {save, Updates :: maps:map(), CbData :: cb_state()}.
+-type callback_result() :: {ok, CbData :: cb_state()} |
+                           {ok, CbData :: cb_state(), [action()]} |
+                           {deactivate, CbData :: cb_state()} |
+                           {deactivate, CbData :: cb_state(), [action()]}.
 
--callback deactivate(CbData :: cb_state()) ->
-    {ok, Data :: cb_state()} |
-    {save, Data :: cb_state()} |
-    {save, Updates :: maps:map(), CbData :: cb_state()}.
+-callback handle_call(Msg :: term(), From :: from(), CbData :: cb_state()) -> callback_result().
 
--optional_callbacks([provider/0,
-                     placement/0]).
+-callback handle_cast(Msg :: term(), CbData :: cb_state()) -> callback_result().
+
+-callback handle_info(Msg :: term(), CbData :: cb_state()) -> callback_result().
+
+-callback deactivate(CbData :: cb_state()) -> ok | save_state | {save, Data :: term()}.
+
+-optional_callbacks([activate/2,
+                     provider/0,
+                     placement/0,
+                     state/1,
+                     handle_info/2,
+                     deactivate/1]).
 
 -record(data,
        { cb_module            :: module(),
@@ -97,8 +99,7 @@
          provider             :: term(),
          ref                  :: erleans:grain_ref(),
          create_time          :: non_neg_integer(),
-         deactivate_after     :: non_neg_integer() | infinity,
-         deactivating = false :: boolean()
+         deactivate_after     :: non_neg_integer() | infinity
        }).
 
 -type opts() :: #{ref    => binary(),
@@ -236,14 +237,14 @@ init([GrainRef=#{id := Id,
                                   {ok, SavedData, E} ->
                                       {SavedData, E};
                                   _ ->
-                                      {#{}, undefined}
+                                      new_state(CbModule, Id)
                               end;
-                          {ok, undefined} ->
-                              Provider = undefined,
-                              {#{}, undefined};
-                          error ->
-                              Provider = undefined,
-                              {#{}, undefined}
+                         {ok, undefined} ->
+                             Provider = undefined,
+                             new_state(CbModule, Id);
+                         error ->
+                             Provider = undefined,
+                             new_state(CbModule, Id)
                       end,
 
     maybe_enqueue_grain(GrainRef),
@@ -252,20 +253,20 @@ init([GrainRef=#{id := Id,
         notfound ->
             {stop, notfound};
         _ ->
-            case erlang:function_exported(CbModule, activate, 2) of
-                false ->
-                    CbData1 = CbData,
-                    GrainOpts = #{},
+            case erleans_utils:fun_or_default(CbModule, activate, 2, [GrainRef, CbData], {ok, CbData, #{}}) of
+                {ok, CbData1, GrainOpts} ->
                     init_(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1);
-                true ->
-                    case CbModule:activate(GrainRef, CbData) of
-                        {ok, CbData1, GrainOpts} ->
-                            init_(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1);
-                        {stop, Reason} ->
-                            {stop, Reason}
-                    end
-
+                {error, Reason} ->
+                    {stop, Reason}
             end
+    end.
+
+new_state(CbModule, Id) ->
+    case erlang:function_exported(CbModule, state, 1) of
+        true ->
+            {CbModule:state(Id), undefined};
+        false ->
+            {#{}, undefined}
     end.
 
 init_(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1) ->
@@ -285,38 +286,47 @@ init_(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1) ->
     {ok, active, Data}.
 
 callback_mode() ->
-    state_functions.
+    [state_functions, state_enter].
 
+active(enter, _OldState, Data=#data{deactivate_after=DeactivateAfter}) ->
+    {keep_state, Data, [{state_timeout, DeactivateAfter, activation_expiry}]};
 active({call, From}, {ReqType, Msg}, Data=#data{cb_module=CbModule,
                                                 cb_state=CbData,
                                                 deactivate_after=DeactivateAfter}) ->
-    handle_reply(CbModule:handle_call(Msg, From, CbData), From, Data, upd_timer(ReqType, DeactivateAfter));
+    handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter));
 active(cast, {ReqType, Msg}, Data=#data{cb_module=CbModule,
                                         cb_state=CbData,
                                         deactivate_after=DeactivateAfter}) ->
-    handle_reply(CbModule:handle_cast(Msg, CbData), Data, upd_timer(ReqType, DeactivateAfter));
+    handle_result(CbModule:handle_cast(Msg, CbData), Data, upd_timer(ReqType, DeactivateAfter));
+active(state_timeout, activation_expiry, Data) ->
+    {next_state, deactivating, Data};
 active(EventType, Event, Data) ->
     handle_event(EventType, Event, active, Data).
 
+deactivating(enter, _OldState, Data) ->
+    %% cancel all timers, then maybe stop
+    erleans_timer:recoverable_cancel(),
+    timer_check(Data);
+deactivating(state_timeout, check_timers, Data) ->
+    timer_check(Data);
 deactivating(_EventType, {refresh_timer, _}, Data) ->
+    %% restart the timers
     erleans_timer:recover(),
+    %% this event refreshes the time, which means we are active again
+    %% so simply postpone the event to be handled in the active state
     {next_state, active, Data, [postpone]};
 deactivating(EventType, Event, Data) ->
     handle_event(EventType, Event, deactivating, Data).
 
-handle_event(state_timeout, activation_expiry, _, Data) ->
-    finalize_and_stop(Data, true);
-handle_event(_, check_timers, active, _) ->
-    keep_state_and_data;
-handle_event(_, check_timers, _, Data) ->
+% see if anything is ticking, if yes, then we need to wait to see if we can shut down
+timer_check(Data) ->
     case erleans_timer:check() of
         finished ->
-            finalize_and_stop(Data, false);
+            finalize_and_stop(Data);
         pending ->
-            %% we can't get here with a reply pending
-            erlang:send_after(50, self(), check_timers),
-            keep_state_and_data
-    end;
+            {keep_state, Data, [{state_timeout, 50, check_timers}]}
+    end.
+
 handle_event(_, {erleans_grain_tag, {go, _, _, _, _}}, _, _Data) ->
     %% checked out
     keep_state_and_data;
@@ -328,7 +338,8 @@ handle_event(_, {cancel_timer, _Pid, _TimeLeft}, _, _Data) ->
     keep_state_and_data;
 handle_event(_, Message, _, Data=#data{cb_module=CbModule,
                                        cb_state=CbData}) ->
-    handle_reply(CbModule:handle_info(Message, CbData), Data, []).
+    Reply = erleans_utils:fun_or_default(CbModule, handle_info, 2, [Message, CbData], {ok, CbData}),
+    handle_result(Reply, Data, []).
 
 code_change(_OldVsn, State, Data, _Extra) ->
     {ok, State, Data}.
@@ -345,7 +356,7 @@ terminate(Reason, _State, Data) ->
     lager:info("at=terminate reason=~p", [Reason]),
     %% supervisor is terminating, node is probably shutting down.
     %% deactivate the grain so it can clean up and save if needed
-    _ = finalize_and_stop(Data, false),
+    _ = finalize_and_stop(Data),
     ok.
 
 %% Internal functions
@@ -362,28 +373,20 @@ upd_timer(refresh_timer, DeactivateAfter) ->
 %% automatically started when referenced stopping doesn't make much sense in the
 %% traditional sense. Maybe it should be removed or at least renamed and maybe act as
 %% recoverable?
-finalize_and_stop(Data, _Recoverable=true) ->
-    %% first, cancel all timers, see if anything is ticking, if no,
-    %% then we need to wait to see if we can shut down
-    erleans_timer:recoverable_cancel(),
-    case erleans_timer:check() of
-        finished ->
-            finalize_and_stop(Data, false);
-        pending ->
-            %% we can't get here with a reply pending
-            erlang:send_after(50, self(), check_timers),
-            {next_state, deactivating, Data}
-    end;
 finalize_and_stop(Data=#data{cb_module=CbModule,
                              id=Id,
                              ref=Ref,
                              provider=Provider,
                              cb_state=CbData,
-                             etag=ETag}, false) ->
+                             etag=ETag}) ->
     %% Save to or delete from backing storage.
     erleans_pm:unregister_name(Ref, self()),
-    case CbModule:deactivate(CbData) of
-        {save, NewCbData} ->
+    case erleans_utils:fun_or_default(CbModule, deactivate, 1, [CbData], {ok, CbData}) of
+        {save_state, NewCbData={_, PersistentState}} ->
+            NewETag = replace_state(CbModule, Provider, Id, PersistentState, ETag),
+            {stop, {shutdown, deactivated}, Data#data{cb_state=NewCbData,
+                                                      etag=NewETag}};
+        {save_state, NewCbData} ->
             NewETag = replace_state(CbModule, Provider, Id, NewCbData, ETag),
             {stop, {shutdown, deactivated}, Data#data{cb_state=NewCbData,
                                                       etag=NewETag}};
@@ -391,80 +394,46 @@ finalize_and_stop(Data=#data{cb_module=CbModule,
             {stop, {shutdown, deactivated}, Data#data{cb_state=NewCbData}}
     end.
 
-handle_reply(Reply, Data=#data{ref=GrainRef}, Actions) ->
+handle_result({ok, NewCbData}, Data=#data{ref=GrainRef}, Actions) ->
     maybe_enqueue_grain(GrainRef),
-    handle_reply_(Reply, Data, Actions).
-
-handle_reply(Reply, From, Data=#data{ref=GrainRef}, Actions) ->
-    maybe_enqueue_grain(GrainRef),
-    handle_reply_(Reply, From, Data, Actions).
-
-handle_reply_({reply, Reply, NewCbData}, From, Data, Actions) ->
-    {keep_state, Data#data{cb_state=NewCbData}, [{reply, From, Reply} | Actions]};
-handle_reply_({save_reply, Reply, Updates, NewCbData}, From, Data=#data{id=Id,
-                                                                        cb_module=CbModule,
-                                                                        provider=Provider,
-                                                                        etag=ETag}, Actions)
-  when is_map(Updates) ->
-    %% Saving requires an etag so it can verify no other process has updated the row before us.
-    %% The actor needs to crash in the case that the etag found in the table has chnaged.
-    NewETag = update_state(CbModule, Provider, Id, Updates, NewCbData, ETag),
-    {keep_state, Data#data{cb_state=NewCbData, etag=NewETag}, [{reply, From, Reply} | Actions]};
-handle_reply_({save_reply, Reply, NewCbData}, From, Data=#data{id=Id,
-                                                               cb_module=CbModule,
-                                                               provider=Provider,
-                                                               etag=ETag}, Actions) ->
-    NewETag = replace_state(CbModule, Provider, Id, NewCbData, ETag),
-    {keep_state, Data#data{cb_state=NewCbData, etag=NewETag}, [{reply, From, Reply} | Actions]};
-handle_reply_({stop, _Reason, Reply, NewCbData}, From, Data, Actions) ->
-    {stop, Reason, NewData} = finalize_and_stop(Data#data{cb_state=NewCbData}, false),
-    {stop_and_reply, Reason, [{reply, From, Reply} | Actions], NewData};
-handle_reply_({stop, NewCbData}, _From, Data, _Actions) ->
-    finalize_and_stop(Data#data{cb_state=NewCbData}, false).
-
-handle_reply_({noreply, NewCbData}, Data, Actions) ->
     {keep_state, Data#data{cb_state=NewCbData}, Actions};
-handle_reply_({stop, NewCbData}, Data, _Actions) ->
-    finalize_and_stop(Data#data{cb_state=NewCbData}, false);
-handle_reply_({save, Updates, NewCbData}, Data=#data{id=Id,
-                                                     cb_module=CbModule,
-                                                     provider=Provider,
-                                                     etag=ETag}, Actions) when is_map(Updates) ->
-    NewETag = update_state(CbModule, Provider, Id, Updates, NewCbData, ETag),
-    {keep_state, Data#data{cb_state=NewCbData, etag=NewETag}, Actions};
-handle_reply_({save, NewCbData}, Data=#data{id=Id,
-                                            cb_module=CbModule,
-                                            provider=Provider,
-                                            etag=ETag}, Actions) ->
-    NewETag = replace_state(CbModule, Provider, Id, NewCbData, ETag),
-    {keep_state, Data#data{cb_state=NewCbData, etag=NewETag}, Actions}.
+handle_result({ok, NewCbData, CbActions}, Data=#data{ref=GrainRef}, Actions) ->
+    maybe_enqueue_grain(GrainRef),
+    {Actions1, Data1} = handle_actions(CbActions, Actions, NewCbData, Data),
+    {keep_state, Data1#data{cb_state=NewCbData}, Actions1};
+handle_result({deactivate, NewCbData}, Data, _) ->
+    {next_state, deactivating, Data#data{cb_state=NewCbData}, []};
+handle_result({deactivate, NewCbData, CbActions}, Data, _) ->
+    {Actions1, Data1} = handle_actions(CbActions, [], NewCbData, Data),
+    {next_state, deactivating, Data1#data{cb_state=NewCbData}, Actions1}.
 
-%% Saving requires an etag so it can verify no other process has updated the row before us.
-%% The actor needs to crash in the case that the etag found in the table has changed.
-update_state(_CbModule, undefined, _Id, _Updates, _CbData, _ETag) ->
-    exit(?NO_PROVIDER_ERROR);
-update_state(CbModule, Provider, Id, Updates, #{persistent := PData,
-                                                ephemeral  := _}, ETag) ->
-    NewETag = etag(PData),
-    update_state_(CbModule, Provider, Id, Updates, ETag, NewETag);
-update_state(CbModule, Provider, Id, Updates, CbData, ETag) ->
-    NewETag = etag(CbData),
-    update_state_(CbModule, Provider, Id, Updates, ETag, NewETag).
+%% Drops unrecognized actions and converts cast actions to next_events that
+%% do not reset the activation timer
+handle_actions([], ActionsAcc, _CbData, Data) ->
+    {lists:reverse(ActionsAcc), Data};
+handle_actions([{cast, Msg} | Rest], ActionsAcc, CbData, Data) ->
+    handle_actions(Rest, [{next_event, cast, {leave_timer, Msg}} | ActionsAcc], CbData, Data);
+handle_actions([{info, Msg} | Rest], ActionsAcc, CbData, Data) ->
+    handle_actions(Rest, [{next_event, info, {leave_timer, Msg}} | ActionsAcc], CbData, Data);
+handle_actions([R={reply, _, _} | Rest], ActionsAcc, CbData, Data) ->
+    handle_actions(Rest, [R | ActionsAcc], CbData, Data);
+handle_actions([save_state | Rest], ActionsAcc, CbData, Data) ->
+    NewETag = replace_state(CbData, Data),
+    handle_actions(Rest, ActionsAcc, CbData, Data#data{etag=NewETag});
+handle_actions([A | _Rest], _ActionsAcc, _CbData, _Data) ->
+    %% unknown action, exit with reason bad_action
+    exit({bad_action, A}).
 
-update_state_(CbModule, {Provider, ProviderName}, Id, Updates, ETag, NewETag) ->
-    case Provider:update(CbModule, ProviderName, Id, Updates, ETag, NewETag) of
-        ok ->
-            NewETag;
-        {error, Reason} ->
-            exit(Reason)
-    end.
+replace_state({_Ephemeral, Persistent}, Data) ->
+    replace_state(Persistent, Data);
+replace_state(CbData, #data{id=Id,
+                            cb_module=CbModule,
+                            provider=Provider,
+                            etag=ETag}) ->
+    replace_state(CbModule, Provider, Id, CbData, ETag).
 
 replace_state(_CbModule, undefined, _Id, _CbData, _ETag) ->
     exit(?NO_PROVIDER_ERROR);
-replace_state(CbModule, Provider, Id, #{persistent := PData,
-                                        ephemeral  := _}, ETag) ->
-    NewETag = etag(PData),
-    replace_state(CbModule, Provider, Id, PData, ETag, NewETag);
 replace_state(CbModule, Provider, Id, CbData, ETag) ->
     NewETag = etag(CbData),
     replace_state(CbModule, Provider, Id, CbData, ETag, NewETag).
@@ -482,11 +451,10 @@ maybe_enqueue_grain(GrainRef = #{placement := {stateless, _}}) ->
 maybe_enqueue_grain(_) ->
     ok.
 
-verify_etag(CbModule, Id, {Provider, ProviderName}, undefined, CbData=#{persistent := PData,
-                                                                        ephemeral  := _}) ->
-    ETag = etag(PData),
-    Provider:insert(CbModule, ProviderName, Id, PData, ETag),
-    {CbData, ETag};
+verify_etag(CbModule, Id, {Provider, ProviderName}, undefined, D={_, CbData}) ->
+    ETag = etag(CbData),
+    Provider:insert(CbModule, ProviderName, Id, CbData, ETag),
+    {D, ETag};
 verify_etag(CbModule, Id, {Provider, ProviderName}, undefined, CbData) ->
     ETag = etag(CbData),
     Provider:insert(CbModule, ProviderName, Id, CbData, ETag),

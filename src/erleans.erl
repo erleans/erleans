@@ -76,7 +76,7 @@ get_stream(StreamProvider, Topic, FetchInterval) ->
 
 -spec provider(module()) -> provider().
 provider(CbModule) ->
-    case fun_or_default(CbModule, provider, undefined) of
+    case erleans_utils:fun_or_default(CbModule, provider, undefined) of
         undefined ->
             undefined;
         Name ->
@@ -103,22 +103,9 @@ find_provider_config(Name) ->
 
 -spec placement(module()) -> placement().
 placement(Module) ->
-    case fun_or_default(Module, placement, ?DEFAULT_PLACEMENT) of
+    case erleans_utils:fun_or_default(Module, placement, ?DEFAULT_PLACEMENT) of
         stateless ->
             {stateless, erleans_config:get(default_stateless_max, 5)};
         Placement ->
             Placement
-    end.
-
-%% If a function is exported by the module return the result of calling it
-%% else return the default.
--spec fun_or_default(module(), atom(), term()) -> term().
-fun_or_default(Module, FunctionName, Default) ->
-    %% load the module if it isn't already
-    erlang:function_exported(Module, module_info, 0) orelse code:ensure_loaded(Module),
-    case erlang:function_exported(Module, FunctionName, 0) of
-        true ->
-            Module:FunctionName();
-        false ->
-            Default
     end.
