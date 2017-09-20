@@ -20,13 +20,23 @@
          join/3,
          leave/0]).
 
+-include_lib("kernel/include/inet.hrl").
 -include_lib("partisan/include/partisan.hrl").
 
 join(Name, Host) ->
     join(Name, Host, ?PEER_PORT).
 
 join(Name, Host, PartisanPort) ->
-    partisan_peer_service:join({Name, Host, PartisanPort}).
+    IP = case inet:parse_address(Host) of
+             {error, einval} ->
+                 {ok, #hostent{h_addr_list=[IPAddress | _]}} = inet_res:getbyname(Host, a),
+                 IPAddress;
+             {ok, IPAddress} ->
+                 IPAddress
+         end,
+    partisan_peer_service:join(#{name => Name,
+                                 listen_addrs => [#{ip => IP, port => PartisanPort}],
+                                 parallelism => 1}).
 
 leave() ->
     partisan_peer_service:leave([]).

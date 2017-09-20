@@ -1,0 +1,123 @@
+defaults: &defaults
+  shell: /bin/bash
+  working_directory: /home/circleci/erleans
+  docker:
+    - image: tsloughter/erlang-alpine:20.0.1
+      cmd: ["/bin/bash"]
+    - image: postgres:9
+      env:
+      - POSTGRES_USER=test
+      - POSTGRES_PASSWORD=test
+      - POSTGRES_DB=test
+
+version: 2
+jobs:
+  build:
+    <<: *defaults
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - erleans-{{ checksum "rebar.lock" }}
+            - erleans-hex-packages
+
+      - run:
+          command: rebar3 compile
+
+      - store_artifacts:
+          path: /home/circleci/erleans/rebar3.crashdump
+          destination: rebar3_crashdump.txt
+          when: on_fail
+
+      - save-cache:
+          key: erleans-{{ checksum "rebar.lock" }}
+          paths:
+            - /home/circleci/erleans/_build/default/lib
+            - /home/circleci/erleans/_build/default/plugins
+
+      - save-cache:
+          key: erleans-hex-packages
+          paths:
+            - /root/.cache/rebar3/hex/default/packages
+
+  dialyzer:
+    <<: *defaults
+    steps:
+      - checkout
+
+      - attach_workspace:
+          at: /home/circleci/erleans
+
+      - restore_cache:
+          keys:
+            - erlang-plt-20.0.1
+
+      - restore_cache:
+          keys:
+            - erleans-{{ checksum "rebar.lock" }}
+            - erleans-hex-packages
+
+      - run:
+          command: rebar3 dialyzer
+
+      - save-cache:
+          key: erlang-plt-20.0.1
+          paths:
+            - /root/.cache/rebar3/rebar3_20.0.1_plt
+  xref:
+    <<: *defaults
+    steps:
+      - checkout
+
+      - attach_workspace:
+          at: /home/circleci/erleans
+
+      - restore_cache:
+          keys:
+            - erleans-{{ checksum "rebar.lock" }}
+            - erleans-hex-packages
+
+      - run:
+          command: rebar3 xref
+
+  tests:
+    <<: *defaults
+    steps:
+      - checkout
+
+      - attach_workspace:
+          at: /home/circleci/erleans
+
+      - restore_cache:
+          keys:
+            - erleans-{{ checksum "rebar.lock" }}
+            - erleans-hex-packages
+
+      - run:
+          command: |
+            set -eux
+            rebar3 test
+            rebar3 as pg test
+
+      - store_test_results:
+          path: /home/circleci/erleans/_build/test/logs/
+
+      - store_artifacts:
+          path: /home/circleci/erleans/_build/test/logs
+          destination: common_test
+
+workflows:
+  version: 2
+  build_and_test:
+    jobs:
+      - build
+      - dialyzer:
+          requires:
+            - build
+      - xref:
+          requires:
+            - build
+      - tests:
+          requires:
+            - build

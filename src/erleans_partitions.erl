@@ -132,7 +132,7 @@ terminate(_Reason, _State) ->
 
 update_ranges(MembersList, NumPartitions, ToNotify) ->
     Length = length(MembersList),
-    {_, NodeRanges} = lists:foldl(fun({Node, _, _}, {Pos, Acc}) ->
+    {_, NodeRanges} = lists:foldl(fun(#{name := Node}, {Pos, Acc}) ->
                                       Range = calc_partition_range(Pos, Length, NumPartitions),
                                       {Pos+1, [{Range, Node} | Acc]};
                                      (Node, {Pos, Acc}) ->
