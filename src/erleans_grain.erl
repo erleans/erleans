@@ -143,7 +143,7 @@ call(GrainRef, Request, Timeout) ->
     ReqType = req_type(),
     do_for_ref(GrainRef, fun(Pid) ->
                              try
-                                 gen_statem:call(Pid, {ReqType, Request}, Timeout)
+                                 gen_statem:call(Pid, {ocp:context(), ReqType, Request}, Timeout)
                              catch
                                  exit:{bad_etag, _} ->
                                      lager:error("at=grain_exit reason=bad_etag", []),
@@ -299,10 +299,19 @@ callback_mode() ->
 
 active(enter, _OldState, Data=#data{deactivate_after=DeactivateAfter}) ->
     {keep_state, Data, [{state_timeout, DeactivateAfter, activation_expiry}]};
-active({call, From}, {ReqType, Msg}, Data=#data{cb_module=CbModule,
+active({call, From}, {undefined, ReqType, Msg}, Data=#data{cb_module=CbModule,
                                                 cb_state=CbData,
                                                 deactivate_after=DeactivateAfter}) ->
     handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter));
+active({call, From}, {TraceContext, ReqType, Msg}, Data=#data{cb_module=CbModule,
+                                                              cb_state=CbData,
+                                                              deactivate_after=DeactivateAfter}) ->
+    ocp:start_trace(TraceContext),
+    ocp:start_span(span_name(Msg)),
+    ocp:put_attribute(<<"grain_msg">>, io_lib:format("~p", [Msg])),
+    Result = handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter)),
+    ocp:finish_span(),
+    Result;
 active(cast, {ReqType, Msg}, Data=#data{cb_module=CbModule,
                                         cb_state=CbData,
                                         deactivate_after=DeactivateAfter}) ->
@@ -318,7 +327,7 @@ deactivating(enter, _OldState, Data) ->
     timer_check(Data);
 deactivating(state_timeout, check_timers, Data) ->
     timer_check(Data);
-deactivating(_EventType, {refresh_timer, _}, Data) ->
+deactivating(_EventType, {_, refresh_timer, _}, Data) ->
     %% restart the timers
     erleans_timer:recover(),
     %% this event refreshes the time, which means we are active again
@@ -473,3 +482,8 @@ verify_etag(_, _, _, ETag, CbData) ->
 
 etag(Data) ->
     erlang:phash2(Data).
+
+span_name(Msg) when is_tuple(Msg) ->
+    element(1, Msg);
+span_name(Msg) ->
+    Msg.

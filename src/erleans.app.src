@@ -16,7 +16,8 @@
     jch,
     eql,
     erlware_commons,
-    vonnegut
+    vonnegut,
+    opencensus
    ]},
   {modules, []},
   {env, [{deactivate_after, 2700000}, %% 45 minutes

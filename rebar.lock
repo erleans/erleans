@@ -17,11 +17,16 @@
  {<<"lasp_pg">>,{pkg,<<"lasp_pg">>,<<"0.0.1">>},0},
  {<<"lasp_support">>,{pkg,<<"lasp_support">>,<<"0.0.3">>},1},
  {<<"metal">>,{pkg,<<"metal">>,<<"0.1.0">>},2},
+ {<<"opencensus">>,
+  {git,"https://github.com/census-instrumentation/opencensus-erlang.git",
+       {ref,"b8fecf303896a9bdbfe9d1f83371a5bc1e88a28a"}},
+  0},
  {<<"partisan">>,{pkg,<<"partisan">>,<<"1.0.1">>},0},
  {<<"plumtree">>,{pkg,<<"plumtree">>,<<"0.4.0">>},1},
  {<<"prometheus">>,{pkg,<<"prometheus">>,<<"3.4.0">>},1},
  {<<"quickrand">>,{pkg,<<"quickrand">>,<<"1.7.2">>},1},
  {<<"rand_compat">>,{pkg,<<"rand_compat">>,<<"0.0.3">>},1},
+ {<<"rfc3339">>,{pkg,<<"rfc3339">>,<<"0.9.0">>},2},
  {<<"sbroker">>,{pkg,<<"sbroker">>,<<"1.0.0">>},0},
  {<<"sext">>,{pkg,<<"sext">>,<<"1.4.0">>},1},
  {<<"shackle">>,{pkg,<<"shackle">>,<<"0.5.1">>},1},
@@ -31,7 +36,8 @@
  {<<"vonnegut">>,
   {git,"https://github.com/spacetime-iot/vonnegut.git",
        {ref,"7d0d9123830215fa75f7fe18033aa9f7f500639b"}},
-  0}]}.
+  0},
+ {<<"wts">>,{pkg,<<"wts">>,<<"0.3.0">>},1}]}.
 [
 {pkg_hash,[
  {<<"accept">>, <<"2505B60BCB992CA79BD03AB7B8FEC8A520A47D9730F286DF1A479CC98B03F94B">>},
@@ -57,10 +63,12 @@
  {<<"prometheus">>, <<"91759726F2E384DF2EF48DAF039D506705A7AA81DCBBB2DBFFEE1FD0C5431D32">>},
  {<<"quickrand">>, <<"E856F3C69FEC00D1ACCA8E56CB452B650E838D3A9720811410F439121EFAFE59">>},
  {<<"rand_compat">>, <<"011646BC1F0B0C432FE101B816F25B9BBB74A085713CEE1DAFD2D62E9415EAD3">>},
+ {<<"rfc3339">>, <<"2075653DC9407541C84B1E15F8BDA2ABE95FB17C9694025E079583F2D19C1060">>},
  {<<"sbroker">>, <<"28FF1B5E58887C5098539F236307B36FE1D3EDAA2ACFF9D6A3D17C2DCAFEBBD0">>},
  {<<"sext">>, <<"2A9443A90C3164231A5E11C73133C4B1762B27FBF1647AA0DE06EF565C47B38B">>},
  {<<"shackle">>, <<"D32906B49BDF030127558778F2E5CEE9D7F10C55DD40E25DA51381EADA719CBF">>},
  {<<"time_compat">>, <<"23FE0AD1FDF3B5B88821B2D04B4B5E865BF587AE66056D671FE0F53514ED8139">>},
  {<<"types">>, <<"03BB7140016C896D3441A77CB0B7D6ACAA583D6D6E9C4A3E1FD3C25123710290">>},
- {<<"uuid">>, <<"D596C8DD01A4AE48B9D8D51832CCC8F8302BF67ACD01336AEC3FCFAE6B9D2BC2">>}]}
+ {<<"uuid">>, <<"D596C8DD01A4AE48B9D8D51832CCC8F8302BF67ACD01336AEC3FCFAE6B9D2BC2">>},
+ {<<"wts">>, <<"5CDF22C775CB1EBAE24C326A5DB6074D753C42F4BD12A9AA47CC62D3E2C71AD1">>}]}
 ].
