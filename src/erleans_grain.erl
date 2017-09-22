@@ -67,7 +67,6 @@
 -callback state(Id :: term()) -> term().
 
 -callback activate(Ref :: erleans:grain_ref(), Arg :: term()) -> {ok, Data :: cb_state(), opts()} |
-                                                                 ignore |
                                                                  {error, Reason :: term()}.
 
 -type callback_result() :: {ok, CbData :: cb_state()} |
@@ -110,7 +109,7 @@
 
 -export_types([opts/0]).
 
--spec start_link(GrainRef :: erleans:grain_ref()) -> {ok, pid()} | {error, any()}.
+-spec start_link(GrainRef :: erleans:grain_ref()) -> {ok, pid() | undefined} | {error, any()}.
 start_link(GrainRef = #{placement := {stateless, _N}}) ->
     {ok, Pid} = gen_statem:start_link(?MODULE, [GrainRef], []),
     gproc:reg(?stateless_counter(GrainRef)),
@@ -182,6 +181,11 @@ do_for_ref(GrainRef, Fun) ->
             undefined ->
                 lager:info("start=~p", [GrainRef]),
                 case activate_grain(GrainRef) of
+                    {ok, undefined} ->
+                        %% the only way the Pid could be `undefined`
+                        %% is an ignore from the statem, which can
+                        %% only happen for `{error, notfound}`
+                        exit({noproc, notfound});
                     {ok, Pid} ->
                         Fun(Pid);
                     {error, {already_started, Pid}} ->
@@ -251,11 +255,16 @@ init([GrainRef=#{id := Id,
 
     case CbData of
         notfound ->
-            {stop, notfound};
+            ignore;
         _ ->
             case erleans_utils:fun_or_default(CbModule, activate, 2, [GrainRef, CbData], {ok, CbData, #{}}) of
                 {ok, CbData1, GrainOpts} ->
                     init_(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1);
+                {error, notfound} ->
+                    %% activate returning {error, notfound} is given special treatment and
+                    %% results in an ignore from the statem and an `exit({noproc, notfound})`
+                    %% from `erleans_grain`
+                    ignore;
                 {error, Reason} ->
                     {stop, Reason}
             end

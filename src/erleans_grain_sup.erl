@@ -28,7 +28,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 -spec start_child(Node :: node(), GrainRef :: erleans:grain_ref())
-                 -> {ok, pid()} | {error, supervisor:startchild_err()}.
+                 -> {ok, pid() | undefined} | {error, supervisor:startchild_err()}.
 start_child(Node, GrainRef) ->
     lager:info("node=~p grain=~p", [Node, GrainRef]),
     supervisor:start_child({?MODULE, Node}, [GrainRef]).
