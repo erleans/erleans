@@ -16,7 +16,7 @@
 
 all() ->
     [manual_start_stop, bad_etag_save, ephemeral_state,
-     no_provider_grain, request_types].
+     no_provider_grain, request_types, exit_notfound].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgsql),
@@ -170,3 +170,10 @@ request_types(_Config) ->
     ?assertMatch({'EXIT', _}, (catch test_grain:activated_counter(GrainPid))),
 
     ok.
+
+exit_notfound(_Config) ->
+    %% activate returning {error, notfound} is given special treatment and
+    %% results in an ignore from the statem and an `exit({noproc, notfound})`
+    %% from `erleans_grain`
+    GrainRef = erleans:get_grain(notfound_grain, <<"notfound-grain-1">>),
+    ?assertExit({noproc, notfound}, notfound_grain:anything(GrainRef)).
