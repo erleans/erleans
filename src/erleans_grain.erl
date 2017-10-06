@@ -40,6 +40,7 @@
          unsubscribe/2]).
 
 -export([init/1,
+         init/2,
          callback_mode/0,
          active/3,
          deactivating/3,
@@ -110,13 +111,8 @@
 -export_types([opts/0]).
 
 -spec start_link(GrainRef :: erleans:grain_ref()) -> {ok, pid() | undefined} | {error, any()}.
-start_link(GrainRef = #{placement := {stateless, _N}}) ->
-    {ok, Pid} = gen_statem:start_link(?MODULE, [GrainRef], []),
-    gproc:reg(?stateless_counter(GrainRef)),
-    gproc:reg_other(?stateless(GrainRef), Pid),
-    {ok, Pid};
 start_link(GrainRef) ->
-    gen_statem:start_link({via, erleans_pm, GrainRef}, ?MODULE, [GrainRef], []).
+    proc_lib:start_link(?MODULE, init, [self(), GrainRef]).
 
 subscribe(StreamProvider, Topic) ->
     %% 0 is going to be the most common initial token, but subscribe/3
@@ -143,7 +139,7 @@ call(GrainRef, Request, Timeout) ->
     ReqType = req_type(),
     do_for_ref(GrainRef, fun(Pid) ->
                              try
-                                 gen_statem:call(Pid, {ReqType, Request}, Timeout)
+                                 gen_statem:call(Pid, {ocp:context(), ReqType, Request}, Timeout)
                              catch
                                  exit:{bad_etag, _} ->
                                      lager:error("at=grain_exit reason=bad_etag", []),
@@ -154,7 +150,7 @@ call(GrainRef, Request, Timeout) ->
 -spec cast(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 cast(GrainRef, Request) ->
     ReqType = req_type(),
-    do_for_ref(GrainRef, fun(Pid) -> gen_statem:cast(Pid, {ReqType, Request}) end).
+    do_for_ref(GrainRef, fun(Pid) -> gen_statem:cast(Pid, {ocp:context(), ReqType, Request}) end).
 
 req_type() ->
     case get(req_type) of
@@ -231,10 +227,22 @@ activate_random(GrainRef) ->
     Node = lists:nth(Nth, Members),
     erleans_grain_sup:start_child(Node, GrainRef).
 
-init([GrainRef=#{id := Id,
-                 implementing_module := CbModule}]) ->
+%% not used but required by the behaviour definition
+init(Args) -> erlang:error(not_implemented, [Args]).
+
+init(Parent, GrainRef=#{id := Id,
+                        implementing_module := CbModule}) ->
     put(grain_ref, GrainRef),
     process_flag(trap_exit, true),
+
+    case GrainRef of
+        #{placement := {stateless, _N}} ->
+            gproc:reg(?stateless_counter(GrainRef)),
+            gproc:reg_other(?stateless(GrainRef), self());
+        _->
+            erleans_pm:register_name(GrainRef, self())
+    end,
+
     {CbData, ETag} = case maps:find(provider, GrainRef) of
                           {ok, Provider={ProviderModule, ProviderName}} ->
                               case ProviderModule:read(CbModule, ProviderName, Id) of
@@ -255,18 +263,18 @@ init([GrainRef=#{id := Id,
 
     case CbData of
         notfound ->
-            ignore;
+            exit(notfound);
         _ ->
             case erleans_utils:fun_or_default(CbModule, activate, 2, [GrainRef, CbData], {ok, CbData, #{}}) of
                 {ok, CbData1, GrainOpts} ->
-                    init_(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1);
+                    init_(Parent, GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1);
                 {error, notfound} ->
                     %% activate returning {error, notfound} is given special treatment and
                     %% results in an ignore from the statem and an `exit({noproc, notfound})`
                     %% from `erleans_grain`
-                    ignore;
+                    exit(notfound);
                 {error, Reason} ->
-                    {stop, Reason}
+                    exit(Reason)
             end
     end.
 
@@ -278,7 +286,7 @@ new_state(CbModule, Id) ->
             {#{}, undefined}
     end.
 
-init_(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1) ->
+init_(Parent, GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1) ->
     {CbData2, ETag1} = verify_etag(CbModule, Id, Provider, ETag, CbData1),
     CreateTime = maps:get(create_time, GrainOpts, erlang:system_time(seconds)),
     DeactivateAfter = maps:get(deactivate_after, GrainOpts, erleans_config:get(deactivate_after)),
@@ -292,21 +300,42 @@ init_(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1) ->
                  create_time      = CreateTime,
                  deactivate_after = case DeactivateAfter of 0 -> infinity; _ -> DeactivateAfter end
                 },
-    {ok, active, Data}.
+    proc_lib:init_ack(Parent, {ok, self()}),
+    gen_statem:enter_loop(?MODULE, [], active, Data).
 
 callback_mode() ->
     [state_functions, state_enter].
 
 active(enter, _OldState, Data=#data{deactivate_after=DeactivateAfter}) ->
     {keep_state, Data, [{state_timeout, DeactivateAfter, activation_expiry}]};
-active({call, From}, {ReqType, Msg}, Data=#data{cb_module=CbModule,
-                                                cb_state=CbData,
-                                                deactivate_after=DeactivateAfter}) ->
+active({call, From}, {undefined, ReqType, Msg}, Data=#data{cb_module=CbModule,
+                                                           cb_state=CbData,
+                                                           deactivate_after=DeactivateAfter}) ->
     handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter));
-active(cast, {ReqType, Msg}, Data=#data{cb_module=CbModule,
-                                        cb_state=CbData,
-                                        deactivate_after=DeactivateAfter}) ->
+active({call, From}, {TraceContext, ReqType, Msg}, Data=#data{cb_module=CbModule,
+                                                              cb_state=CbData,
+                                                              deactivate_after=DeactivateAfter}) ->
+    ocp:start_trace(TraceContext),
+    ocp:start_span(span_name(Msg)),
+    ocp:put_attribute(<<"grain_msg">>, io_lib:format("~p", [Msg])),
+    try handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter))
+    after
+        ocp:finish_span()
+    end;
+active(cast, {undefined, ReqType, Msg}, Data=#data{cb_module=CbModule,
+                                                   cb_state=CbData,
+                                                   deactivate_after=DeactivateAfter}) ->
     handle_result(CbModule:handle_cast(Msg, CbData), Data, upd_timer(ReqType, DeactivateAfter));
+active(cast, {TraceContext, ReqType, Msg}, Data=#data{cb_module=CbModule,
+                                                      cb_state=CbData,
+                                                      deactivate_after=DeactivateAfter}) ->
+    ocp:start_trace(TraceContext),
+    ocp:start_span(span_name(Msg)),
+    ocp:put_attribute(<<"grain_msg">>, io_lib:format("~p", [Msg])),
+    try handle_result(CbModule:handle_cast(Msg, CbData), Data, upd_timer(ReqType, DeactivateAfter))
+    after
+        ocp:finish_span()
+    end;
 active(state_timeout, activation_expiry, Data) ->
     {next_state, deactivating, Data};
 active(EventType, Event, Data) ->
@@ -318,7 +347,7 @@ deactivating(enter, _OldState, Data) ->
     timer_check(Data);
 deactivating(state_timeout, check_timers, Data) ->
     timer_check(Data);
-deactivating(_EventType, {refresh_timer, _}, Data) ->
+deactivating(_EventType, {_, refresh_timer, _}, Data) ->
     %% restart the timers
     erleans_timer:recover(),
     %% this event refreshes the time, which means we are active again
@@ -473,3 +502,8 @@ verify_etag(_, _, _, ETag, CbData) ->
 
 etag(Data) ->
     erlang:phash2(Data).
+
+span_name(Msg) when is_tuple(Msg) ->
+    element(1, Msg);
+span_name(Msg) ->
+    Msg.
