@@ -263,7 +263,7 @@ init(Parent, GrainRef=#{id := Id,
 
     case CbData of
         notfound ->
-            exit(notfound);
+            proc_lib:init_ack(Parent, ignore);
         _ ->
             case erleans_utils:fun_or_default(CbModule, activate, 2, [GrainRef, CbData], {ok, CbData, #{}}) of
                 {ok, CbData1, GrainOpts} ->
@@ -272,9 +272,9 @@ init(Parent, GrainRef=#{id := Id,
                     %% activate returning {error, notfound} is given special treatment and
                     %% results in an ignore from the statem and an `exit({noproc, notfound})`
                     %% from `erleans_grain`
-                    exit(notfound);
+                    proc_lib:init_ack(Parent, ignore);
                 {error, Reason} ->
-                    exit(Reason)
+                    proc_lib:init_ack(Parent, {error, Reason})
             end
     end.
 
