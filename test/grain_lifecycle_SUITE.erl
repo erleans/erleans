@@ -16,7 +16,8 @@
 
 all() ->
     [manual_start_stop, bad_etag_save, ephemeral_state,
-     no_provider_grain, request_types, exit_notfound].
+     no_provider_grain, request_types, exit_notfound,
+     local_activations].
 
 init_per_suite(Config) ->
     application:ensure_all_started(pgsql),
@@ -63,8 +64,8 @@ bad_etag_save(_Config) ->
 
     ?assertEqual({ok, 1}, test_grain:activated_counter(Grain)),
 
-    OldETag = erlang:phash2(#{activated_counter => 1, deactivated_counter => 0}),
-    NewState = #{activated_counter => 2, deactivated_counter => 0},
+    OldETag = erlang:phash2(#{activated_counter => 1, deactivated_counter => 0, call_counter => 0}),
+    NewState = #{activated_counter => 2, deactivated_counter => 0, call_counter => 0},
     NewETag = erlang:phash2(NewState),
     ok = ProviderModule:update(test_grain, ProviderName, <<"bad-etag-save-grain">>, NewState, OldETag, NewETag),
 
@@ -177,3 +178,29 @@ exit_notfound(_Config) ->
     %% from `erleans_grain`
     GrainRef = erleans:get_grain(notfound_grain, <<"notfound-grain-1">>),
     ?assertExit({noproc, notfound}, notfound_grain:anything(GrainRef)).
+
+%% spawn a bunch of procs making calls to the same unactivated grain
+%% checks that the same local single activation is used for each request
+local_activations(_Config) ->
+    application:set_env(erleans, deactivate_after, 50000),
+
+    Grain1 = erleans:get_grain(test_grain, <<"local-activations-grain1">>),
+
+    Self = self(),
+    lists:foreach(fun(_) ->
+                          erlang:spawn_link(fun() ->
+                                                    {ok, N} = test_grain:call_counter(Grain1),
+                                                    Self ! N
+                                            end)
+                  end, lists:seq(1,10)),
+    (fun F(10) ->
+             ok;
+         F(N) ->
+            receive
+                X when X =:= N ->
+                    F(N+1)
+            after
+                5000 ->
+                    error(loop_timeout)
+            end
+     end)(0).
