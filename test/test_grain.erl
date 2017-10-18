@@ -14,7 +14,8 @@
          save/1,
          node/1,
          deactivated_counter/1,
-         activated_counter/1]).
+         activated_counter/1,
+         call_counter/1]).
 
 -export([state/1,
          activate/2,
@@ -36,6 +37,9 @@ deactivated_counter(Ref) ->
 activated_counter(Ref) ->
     erleans_grain:call(Ref, activated_counter).
 
+call_counter(Ref) ->
+    erleans_grain:call(Ref, call_counter).
+
 save(Ref) ->
     erleans_grain:call(Ref, save).
 
@@ -44,23 +48,28 @@ node(Ref) ->
 
 state(_) ->
     #{activated_counter => 0,
-      deactivated_counter => 0}.
+      deactivated_counter => 0,
+      call_counter => 0}.
 
 activate(_, State=#{activated_counter := Counter}) ->
     {ok, State#{activated_counter => Counter+1}, #{}}.
 
-handle_call(node, From, State) ->
-    {ok, State, [{reply, From, {ok, node()}}]};
-handle_call(deactivated_counter, From, State=#{deactivated_counter := Counter}) ->
-    {ok, State, [{reply, From, {ok, Counter}}]};
-handle_call(deactivated_counter, From, State) ->
-    {ok, State, [{reply, From, {ok, 0}}]};
-handle_call(activated_counter, From, State=#{activated_counter := Counter}) ->
-    {ok, State, [{reply, From, {ok, Counter}}]};
-handle_call(activated_counter, From, State) ->
-    {ok, State, [{reply, From, {ok, 0}}]};
-handle_call(save, From, State) ->
-    {ok, State, [{reply, From, ok}, save_state]}.
+handle_call(call_counter, From, State=#{call_counter := CallCounter}) ->
+    {ok, State#{call_counter => CallCounter+1}, [{reply, From, {ok, CallCounter}}]};
+handle_call(node, From, State=#{call_counter := CallCounter}) ->
+    {ok, State#{call_counter => CallCounter+1}, [{reply, From, {ok, node()}}]};
+handle_call(deactivated_counter, From, State=#{deactivated_counter := Counter,
+                                               call_counter := CallCounter}) ->
+    {ok, State#{call_counter => CallCounter+1}, [{reply, From, {ok, Counter}}]};
+handle_call(deactivated_counter, From, State=#{call_counter := CallCounter}) ->
+    {ok, State#{call_counter => CallCounter+1}, [{reply, From, {ok, 0}}]};
+handle_call(activated_counter, From, State=#{activated_counter := Counter,
+                                             call_counter := CallCounter}) ->
+    {ok, State#{call_counter => CallCounter+1}, [{reply, From, {ok, Counter}}]};
+handle_call(activated_counter, From, State=#{call_counter := CallCounter}) ->
+    {ok, State#{call_counter => CallCounter+1}, [{reply, From, {ok, 0}}]};
+handle_call(save, From, State=#{call_counter := CallCounter}) ->
+    {ok, State#{call_counter => CallCounter+1}, [{reply, From, ok}, save_state]}.
 
 handle_cast(_, State) ->
     {ok, State}.

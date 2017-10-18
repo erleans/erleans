@@ -230,19 +230,30 @@ activate_random(GrainRef) ->
 %% not used but required by the behaviour definition
 init(Args) -> erlang:error(not_implemented, [Args]).
 
-init(Parent, GrainRef=#{id := Id,
-                        implementing_module := CbModule}) ->
+init(Parent, GrainRef) ->
     put(grain_ref, GrainRef),
     process_flag(trap_exit, true),
 
     case GrainRef of
         #{placement := {stateless, _N}} ->
             gproc:reg(?stateless_counter(GrainRef)),
-            gproc:reg_other(?stateless(GrainRef), self());
+            gproc:reg_other(?stateless(GrainRef), self()),
+            init_(Parent, GrainRef);
         _->
-            erleans_pm:register_name(GrainRef, self())
-    end,
+            Self = self(),
+            %% use a node local gproc registration to ensure no duplicates can
+            %% be made on a single node.
+            case gproc:reg_or_locate(?stateful(GrainRef), Self) of
+                {_, Pid} when Pid =/= Self ->
+                    proc_lib:init_ack(Parent, {error, {already_started, Pid}});
+                {_, _Pid} ->
+                    erleans_pm:register_name(GrainRef, Self),
+                    init_(Parent, GrainRef)
+            end
+    end.
 
+init_(Parent, GrainRef=#{id := Id,
+                         implementing_module := CbModule}) ->
     {CbData, ETag} = case maps:find(provider, GrainRef) of
                           {ok, Provider={ProviderModule, ProviderName}} ->
                               case ProviderModule:read(CbModule, ProviderName, Id) of
@@ -267,7 +278,7 @@ init(Parent, GrainRef=#{id := Id,
         _ ->
             case erleans_utils:fun_or_default(CbModule, activate, 2, [GrainRef, CbData], {ok, CbData, #{}}) of
                 {ok, CbData1, GrainOpts} ->
-                    init_(Parent, GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1);
+                    verify_and_enter_loop(Parent, GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1);
                 {error, notfound} ->
                     %% activate returning {error, notfound} is given special treatment and
                     %% results in an ignore from the statem and an `exit({noproc, notfound})`
@@ -286,7 +297,7 @@ new_state(CbModule, Id) ->
             {#{}, undefined}
     end.
 
-init_(Parent, GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1) ->
+verify_and_enter_loop(Parent, GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1) ->
     {CbData2, ETag1} = verify_etag(CbModule, Id, Provider, ETag, CbData1),
     CreateTime = maps:get(create_time, GrainOpts, erlang:system_time(seconds)),
     DeactivateAfter = maps:get(deactivate_after, GrainOpts, erleans_config:get(deactivate_after)),
@@ -419,6 +430,7 @@ finalize_and_stop(Data=#data{cb_module=CbModule,
                              etag=ETag}) ->
     %% Save to or delete from backing storage.
     erleans_pm:unregister_name(Ref, self()),
+    gproc:unreg(?stateful(Ref)),
     case erleans_utils:fun_or_default(CbModule, deactivate, 1, [CbData], {ok, CbData}) of
         {save_state, NewCbData={_, PersistentState}} ->
             NewETag = update_state(CbModule, Provider, Id, PersistentState, ETag),
