@@ -38,7 +38,7 @@ register_name(Name, Pid) when is_pid(Pid) ->
             %% Set up a callback to be triggered on a single node (lasp handles this)
             %% when the number of pids registered for this name goes above 1
             EnforceFun = fun(AwSet) -> deactivate_dups(Name, AwSet) end,
-            lasp:enforce_once({term_to_binary(Name), ?SET}, {cardinality, 2}, EnforceFun),
+            lasp:enforce_once({term_to_binary(Name), ?SET}, {strict, {cardinality, 1}}, EnforceFun),
             yes;
         _ ->
             no
