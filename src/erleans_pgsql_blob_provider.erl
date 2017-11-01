@@ -42,7 +42,12 @@ init(_ProviderName, Args) ->
     {pool, Args}.
 
 post_init(ProviderName, _Args) ->
-    ok = do(ProviderName, fun(C) -> create_grains_table(C) end).
+    case do(ProviderName, fun(C) -> create_grains_table(C) end, 10) of
+        {error, no_db_connection} ->
+            error(no_db_connection);
+        _ ->
+            ok
+    end.
 
 connect(Args) ->
     case pgsql_connection:open(Args) of
@@ -102,7 +107,7 @@ do(ProviderName, Fun, Retry) ->
     C = erleans_conn_manager:get_connection(ProviderName),
     try C of
         {error, timeout} ->
-            timer:sleep(100),
+            timer:sleep(200),
             do(ProviderName, Fun, Retry-1);
         _ ->
             Fun(C)
