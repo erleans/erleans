@@ -42,7 +42,7 @@ init(_ProviderName, Args) ->
     {pool, Args}.
 
 post_init(ProviderName, _Args) ->
-    do(ProviderName, fun(C) -> create_grains_table(C) end).
+    ok = do(ProviderName, fun(C) -> create_grains_table(C) end).
 
 connect(Args) ->
     case pgsql_connection:open(Args) of
@@ -93,9 +93,19 @@ update(Type, ProviderName, Id, Hash, State, OldETag, NewETag) ->
 %%%
 
 do(ProviderName, Fun) ->
+    do(ProviderName, Fun, 1).
+
+do(_ProviderName, _Fun, 0) ->
+    lager:error("failed to obtain database connection"),
+    {error, no_db_connection};
+do(ProviderName, Fun, Retry) ->
     C = erleans_conn_manager:get_connection(ProviderName),
-    try
-        Fun(C)
+    try C of
+        {error, timeout} ->
+            timer:sleep(100),
+            do(ProviderName, Fun, Retry-1);
+        _ ->
+            Fun(C)
     after
         erleans_conn_manager:done(ProviderName, C)
     end.

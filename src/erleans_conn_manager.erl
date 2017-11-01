@@ -65,7 +65,7 @@ done(Broker, Pid) ->
 
 init([Mod, Broker, Size, Args]) ->
     erlang:process_flag(trap_exit, true),
-    B = backoff:init(1000, 10000, self(), backoff_fired),
+    B = backoff:init(1000, 10000),
     {ok, #state{mod=Mod,
                 conns=#{},
                 monitors=#{},
@@ -102,11 +102,15 @@ handle_info({'DOWN', Ref, process, _Pid, _}, State=#state{mod=Mod,
                                                           conns=Conns,
                                                           monitors=Monitors}) ->
     erlang:demonitor(Ref, [flush]),
-    {Conn, Monitors1} = maps:take(Ref, Monitors),
-    %% closing will trigger the handle_info EXIT call to handle reconnecting
-    Mod:close(Conn),
-    {noreply, State#state{conns=maps:remove(Conn, Conns),
-                          monitors=Monitors1}};
+    case maps:take(Ref, Monitors) of
+        {Conn, Monitors1} ->
+            %% closing will trigger the handle_info EXIT call to handle reconnecting
+            Mod:close(Conn),
+            {noreply, State#state{conns=maps:remove(Conn, Conns),
+                                  monitors=Monitors1}};
+        _ ->
+            {noreply, State}
+    end;
 handle_info({'EXIT', Pid, _}, State=#state{mod=Mod,
                                            conn_args=Args,
                                            conns=Conns,
@@ -144,8 +148,8 @@ connect(Mod, Args, Broker, Conns, B) ->
             {_, B1} = backoff:succeed(B),
             {B1, Conns#{Pid => undefined}};
         _ ->
-            _ = backoff:fire(B),
-            {_, B1} = backoff:fail(B),
+            {Backoff, B1} = backoff:fail(B),
+            timer:sleep(Backoff),
             {B1, Conns}
     end.
 
