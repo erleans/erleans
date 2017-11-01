@@ -107,7 +107,7 @@ do(ProviderName, Fun, Retry) ->
     C = erleans_conn_manager:get_connection(ProviderName),
     try C of
         {error, timeout} ->
-            timer:sleep(100),
+            timer:sleep(200),
             do(ProviderName, Fun, Retry-1);
         _ ->
             Fun(C)
