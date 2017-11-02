@@ -26,6 +26,7 @@
          whereis_name/1,
          send/2]).
 
+-include("erleans.hrl").
 -include_lib("lasp_pg/include/lasp_pg.hrl").
 
 -dialyzer({nowarn_function, register_name/2}).
@@ -84,16 +85,21 @@ whereis_name(GrainRef=#{placement := stateless}) ->
 whereis_name(GrainRef=#{placement := {stateless, _}}) ->
     whereis_stateless(GrainRef);
 whereis_name(GrainRef) ->
-    case lasp_pg:members(GrainRef) of
-        {ok, Set} ->
-            case sets:to_list(Set) of
-                [Pid | _] ->
-                    Pid;
+    case gproc:where(?stateful(GrainRef)) of
+        Pid when is_pid(Pid) ->
+            Pid;
+        _ ->
+            case lasp_pg:members(GrainRef) of
+                {ok, Set} ->
+                    case sets:to_list(Set) of
+                        [Pid | _] ->
+                            Pid;
+                        _ ->
+                            undefined
+                    end;
                 _ ->
                     undefined
-            end;
-        _ ->
-            undefined
+            end
     end.
 
 -spec send(Name :: term(), Message :: term()) -> pid().
