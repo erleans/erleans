@@ -328,7 +328,7 @@ active({call, From}, {TraceContext, ReqType, Msg}, Data=#data{cb_module=CbModule
                                                               deactivate_after=DeactivateAfter}) ->
     ocp:start_trace(TraceContext),
     ocp:start_span(span_name(Msg)),
-    ocp:put_attribute(<<"grain_msg">>, io_lib:format("~p", [Msg])),
+    ocp:put_attribute(<<"grain_msg">>, <<"toot">>), %io_lib:format("~p", [Msg])),
     try handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter))
     after
         ocp:finish_span()
@@ -342,7 +342,7 @@ active(cast, {TraceContext, ReqType, Msg}, Data=#data{cb_module=CbModule,
                                                       deactivate_after=DeactivateAfter}) ->
     ocp:start_trace(TraceContext),
     ocp:start_span(span_name(Msg)),
-    ocp:put_attribute(<<"grain_msg">>, io_lib:format("~p", [Msg])),
+    ocp:put_attribute(<<"grain_msg">>,  <<"toot">>), %wio_lib:format("~p", [Msg])),
     try handle_result(CbModule:handle_cast(Msg, CbData), Data, upd_timer(ReqType, DeactivateAfter))
     after
         ocp:finish_span()

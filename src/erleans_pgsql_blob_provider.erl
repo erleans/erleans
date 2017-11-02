@@ -112,7 +112,8 @@ do(ProviderName, Fun, Retry) ->
 
 create_grains_table(C) ->
     {{create,table},[]} = pgsql_connection:simple_query(query(create_table), {pgsql_connection, C}),
-    pgsql_connection:simple_query(query(create_idx), {pgsql_connection, C}).
+    {{create,index},[]} = pgsql_connection:simple_query(query(create_idx), {pgsql_connection, C}),
+    ok.
 
 all_(Type, C) ->
     Q = query(select_all),
