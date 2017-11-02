@@ -27,6 +27,7 @@
          stop/1]).
 
 start(_StartType, _StartArgs) ->
+    ets:new(grain_cache, [{read_concurrency, true}, named_table, public]),
     Specs = init_providers(),
     erleans_dns_peers:join(),
     {ok, Pid} = erleans_sup:start_link(Specs),

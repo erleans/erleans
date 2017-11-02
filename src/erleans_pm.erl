@@ -73,6 +73,7 @@ unregister_name(Name) ->
 unregister_name(Name, Pid) ->
     case lasp_pg:leave(Name, Pid) of
         {ok, _} ->
+            ets:delete(grain_cache, Name),
             Name;
         _ ->
             fail
@@ -84,16 +85,23 @@ whereis_name(GrainRef=#{placement := stateless}) ->
 whereis_name(GrainRef=#{placement := {stateless, _}}) ->
     whereis_stateless(GrainRef);
 whereis_name(GrainRef) ->
-    case lasp_pg:members(GrainRef) of
-        {ok, Set} ->
-            case sets:to_list(Set) of
-                [Pid | _] ->
-                    Pid;
+    _R = rand:uniform(),
+    case ets:lookup(grain_cache, GrainRef) of
+        [{_, Pid}] ->
+            Pid;
+        _ ->
+            case lasp_pg:members(GrainRef) of
+                {ok, Set} ->
+                    case sets:to_list(Set) of
+                        [Pid | _] ->
+                            ets:insert(grain_cache, {GrainRef, Pid}),
+                            Pid;
+                        _ ->
+                            undefined
+                    end;
                 _ ->
                     undefined
-            end;
-        _ ->
-            undefined
+            end
     end.
 
 -spec send(Name :: term(), Message :: term()) -> pid().
