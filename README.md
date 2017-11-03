@@ -5,7 +5,7 @@ erleans [![CircleCI](https://circleci.com/gh/SpaceTime-IoT/erleans.svg?style=svg
 
 ### Grains
 
-Stateful grains are backed by persistent storage and referenced by a primary key set by the grain. An activiation of a grain is a single Erlang process in on an Erlang node (silo) in an Erlang cluster. Activation placement is handled by Erleans and communication is over standard Erlang distribution. If a grain is sent a message and does not have a current activiation one is spawned.
+Stateful grains are backed by persistent storage and referenced by a primary key set by the grain. An activation of a grain is a single Erlang process in on an Erlang node (silo) in an Erlang cluster. Activation placement is handled by Erleans and communication is over standard Erlang distribution. If a grain is sent a message and does not have a current activation one is spawned.
 
 Grain state is persisted through a database provider with an always increasing change id or etag. If the change id or etag has been by another activation the activation attempting to save state will stop.
 
@@ -39,7 +39,7 @@ A grain must explicitly unsubscribe from a stream or it will continue to receive
 
 ## Differences from gen_server
 
-No starting or linking, a grain is activated when it is sent a request if an activiation is not currently running.
+No starting or linking, a grain is activated when it is sent a request if an activation is not currently running.
 
 ### Grain Placement
 
