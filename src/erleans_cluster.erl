@@ -16,17 +16,17 @@
 
 -module(erleans_cluster).
 
--export([join/2,
-         join/3,
+-export([to_node/2,
+         to_node/3,
          leave/0]).
 
 -include_lib("kernel/include/inet.hrl").
 -include_lib("partisan/include/partisan.hrl").
 
-join(Name, Host) ->
-    join(Name, Host, ?PEER_PORT).
+to_node(Name, Host) ->
+    to_node(Name, Host, ?PEER_PORT).
 
-join(Name, Host, PartisanPort) ->
+to_node(Name, Host, PartisanPort) ->
     IP = case inet:parse_address(Host) of
              {error, einval} ->
                  {ok, #hostent{h_addr_list=[IPAddress | _]}} = inet_res:getbyname(Host, a),
@@ -34,9 +34,9 @@ join(Name, Host, PartisanPort) ->
              {ok, IPAddress} ->
                  IPAddress
          end,
-    partisan_peer_service:join(#{name => Name,
-                                 listen_addrs => [#{ip => IP, port => PartisanPort}],
-                                 parallelism => 1}).
+    #{name => Name,
+      listen_addrs => [#{ip => IP, port => PartisanPort}],
+      parallelism => 1}.
 
 leave() ->
     partisan_peer_service:leave([]).

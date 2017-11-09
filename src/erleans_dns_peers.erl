@@ -16,19 +16,14 @@
 
 -module(erleans_dns_peers).
 
--export([join/0,
+-export([discover/3,
          leave/0]).
 
-join() ->
-    ClusterType = erleans_config:get(node_discovery, none),
-    Port = erleans_config:get(partisan_port, 10200),
-    NodeName = erleans_config:get(nodename, nonodename),
+discover(ClusterType, NodeName, Port) ->
     AllNodes = lookup(ClusterType, NodeName, Port),
-    sets:fold(fun({Name, Host, PartisanPort}, _) ->
-                  erleans_cluster:join(Name, Host, PartisanPort)
-              end, ok, AllNodes),
-    {ok, Members} = partisan_peer_service:members(),
-    {lists:usort(Members), AllNodes}.
+    sets:fold(fun({Name, Host, PartisanPort}, Acc) ->
+                  [erleans_cluster:to_node(Name, Host, PartisanPort) | Acc]
+              end, [], AllNodes).
 
 leave() ->
     ok.
