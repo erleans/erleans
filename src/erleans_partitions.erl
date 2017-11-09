@@ -109,7 +109,8 @@ handle_info({update, Membership}, State=#state{num_partitions=NumPartitions,
                           node_ranges=NodeRanges}};
 handle_info(timeout, State=#state{num_partitions=NumPartitions,
                                   to_notify=ToNotify}) ->
-    {ok, MembersList} = partisan_peer_service:members(),
+    %% blocks until the discovery process has initalized fully
+    {ok, MembersList} = erleans_discovery:members(),
     {Range, NodeRanges} = update_ranges(MembersList, NumPartitions, ToNotify),
     {noreply, State#state{range=Range,
                           node_ranges=NodeRanges}};
