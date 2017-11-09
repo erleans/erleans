@@ -28,7 +28,6 @@
 
 start(_StartType, _StartArgs) ->
     Specs = init_providers(),
-    erleans_dns_peers:join(),
     {ok, Pid} = erleans_sup:start_link(Specs),
     post_init_providers(),
 

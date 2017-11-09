@@ -1,6 +1,6 @@
 {application, erleans,
  [{description, "Erleans: Like Orleans but Erlang"},
-  {vsn, "0.1.0"},
+  {vsn, "0.2.0"},
   {registered, []},
   {mod, { erleans_app, []}},
   {applications,
@@ -21,7 +21,7 @@
    ]},
   {modules, []},
   {env, [{deactivate_after, 2700000}, %% 45 minutes
-
+         {refresh_interval, 5000},
          {num_partitions, 128}]},
 
   {maintainers, ["Tristan Sloughter", "Bryan Hughes", "Evan Vigil-McClanahan", "Andrew Varner"]},

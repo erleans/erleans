@@ -49,6 +49,11 @@ init([ProviderPools]) ->
                     start => {erleans_grain_sup, start_link, []},
                     restart => permanent,
                     type => supervisor,
+                    shutdown => 5000},
+                  #{id => erleans_discovery,
+                    start => {erleans_discovery, start_link, []},
+                    restart => permanent,
+                    type => worker,
                     shutdown => 5000} | ProviderPools],
     {ok, {SupFlags, ChildSpecs}}.
 
