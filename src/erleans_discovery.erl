@@ -2,7 +2,8 @@
 
 -behaviour(gen_statem).
 
--export([start_link/0]).
+-export([start_link/0,
+         members/0]).
 
 -export([init/1,
          active/3,
@@ -26,6 +27,9 @@
 start_link() ->
     gen_statem:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+members() ->
+    gen_statem:call(?SERVER, members).
+
 callback_mode() ->
     [state_functions].
 
@@ -40,16 +44,20 @@ init([]) ->
             {ok, inactive, #data{type=Type,
                                  partisan_port=PartisanPort,
                                  nodename=NodeName,
-                                 refresh_interval=RefreshInterval}, [{state_timeout, 0, refresh}]}
+                                 refresh_interval=RefreshInterval}, [{next_event, internal, refresh}]}
     end.
 
-inactive(state_timeout, refresh, Data=#data{refresh_interval=RefreshInterval}) ->
+inactive(internal, refresh, Data=#data{refresh_interval=RefreshInterval}) ->
     ok = handle_refresh(Data),
-    {next_state, active, Data, [{state_timeout, RefreshInterval, refresh}]}.
+    {next_state, active, Data, [{timeout, RefreshInterval, refresh}]};
+inactive(EventType, EventContent, Data) ->
+    handle_event(EventType, EventContent, Data).
 
-active(state_timeout, refresh, Data=#data{refresh_interval=RefreshInterval}) ->
+active(timeout, refresh, Data=#data{refresh_interval=RefreshInterval}) ->
     ok = handle_refresh(Data),
-    {keep_state_and_data, [{state_timeout, RefreshInterval, refresh}]}.
+    {keep_state_and_data, [{timeout, RefreshInterval, refresh}]};
+active(EventType, EventContent, Data) ->
+    handle_event(EventType, EventContent, Data).
 
 terminate(_Reason, _State, _Data) ->
     ok.
@@ -58,6 +66,10 @@ code_change(_, _OldState, Data, _) ->
     {ok, Data}.
 
 %% Internal functions
+
+handle_event({call, From}, members, _Data) ->
+    {ok, MembersList} = partisan_peer_service:members(),
+    {keep_state_and_data, [{reply, From, {ok, MembersList}}]}.
 
 handle_refresh(#data{type=Type,
                      nodename=NodeName,
