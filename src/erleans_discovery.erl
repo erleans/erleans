@@ -20,7 +20,7 @@
                                  | {ip, string()},
                partisan_port    :: integer() | undefined,
                nodename         :: atom() | undefined,
-               refresh_interval :: integer() | undefined}).
+               refresh_interval :: integer() | infinity}).
 
 -define(SERVER, ?MODULE).
 
@@ -36,7 +36,8 @@ callback_mode() ->
 init([]) ->
     case erleans_config:get(node_discovery, none) of
         none ->
-            {ok, inactive, #data{type=none}};
+            {ok, active, #data{type=none,
+                               refresh_interval=infinity}};
         Type ->
             PartisanPort = erleans_config:get(partisan_port, 10200),
             NodeName = erleans_config:get(nodename, nonodename),
@@ -71,6 +72,8 @@ handle_event({call, From}, members, _Data) ->
     {ok, MembersList} = partisan_peer_service:members(),
     {keep_state_and_data, [{reply, From, {ok, MembersList}}]}.
 
+handle_refresh(#data{type=none}) ->
+    ok;
 handle_refresh(#data{type=Type,
                      nodename=NodeName,
                      partisan_port=PartisanPort}) ->

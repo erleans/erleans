@@ -134,13 +134,17 @@ update_ranges(MembersList, NumPartitions, ToNotify) ->
                                       {Pos+1, [{Range, Node} | Acc]}
                                   end, {0, []}, MembersList),
 
-    {Range, _} = lists:keyfind(node(), 2, NodeRanges),
+    case lists:keyfind(node(), 2, NodeRanges) of
+        {Range, _} ->
+            maps:map(fun(_, Pid) ->
+                             Pid ! {update_streams, Range}
+                     end, ToNotify),
 
-    maps:map(fun(_, Pid) ->
-                 Pid ! {update_streams, Range}
-             end, ToNotify),
-
-    {Range, NodeRanges}.
+            {Range, NodeRanges};
+        false ->
+            %% not fully initialized yet
+            {undefined, []}
+    end.
 
 %% Find the range of partitions this node position is responsible for
 -spec calc_partition_range(integer(), integer(), integer()) -> {integer(), integer()}.
