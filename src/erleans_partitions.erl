@@ -78,7 +78,7 @@ init([]) ->
     NumPartitions = erleans_config:get(num_partitions),
     {ok, #state{num_partitions=NumPartitions,
                 node_ranges=[],
-                to_notify=#{}}, 0}.
+                to_notify=#{}}}.
 
 handle_call({find_node, Item}, From, State=#state{num_partitions=NumPartitions,
                                                   node_ranges=Ranges}) ->
@@ -104,13 +104,6 @@ handle_cast(_Msg, State) ->
 handle_info({update, Membership}, State=#state{num_partitions=NumPartitions,
                                                to_notify=ToNotify}) ->
     MembersList = lists:usort(sets:to_list(state_orset:query(Membership))),
-    {Range, NodeRanges} = update_ranges(MembersList, NumPartitions, ToNotify),
-    {noreply, State#state{range=Range,
-                          node_ranges=NodeRanges}};
-handle_info(timeout, State=#state{num_partitions=NumPartitions,
-                                  to_notify=ToNotify}) ->
-    %% blocks until the discovery process has initalized fully
-    {ok, MembersList} = erleans_discovery:members(),
     {Range, NodeRanges} = update_ranges(MembersList, NumPartitions, ToNotify),
     {noreply, State#state{range=Range,
                           node_ranges=NodeRanges}};
