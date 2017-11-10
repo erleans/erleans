@@ -95,7 +95,7 @@ init([]) ->
     start_gc_timer(),
     {ok, #state{streams=#{},
                 provider={Module, Provider},
-                monitors=#{}}, 0}.
+                monitors=#{}}}.
 
 handle_call({next, StreamRef, SubRef, NewSequenceToken}, _From={FromPid, _Tag},
             State=#state{monitors=Monitors,
@@ -258,10 +258,6 @@ handle_info(gc_streams, State) ->
     %%   since the stream ref includes the sequence token, so we need
     %%   to iterate through all of them and merge them when we can.
     start_gc_timer(),
-    {noreply, State};
-handle_info(timeout, State) ->
-    Range = erleans_partitions:get_range(),
-    self() ! {update_streams, Range},
     {noreply, State}.
 
 code_change(_OldVsn, State, _Extra) ->
