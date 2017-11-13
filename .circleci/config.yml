@@ -97,8 +97,9 @@ jobs:
       - run:
           command: |
             set -eux
-            rebar3 test
-            rebar3 as pg test
+            rebar3 do test, cover
+            rebar3 as pg do test, cover
+            rebar3 coveralls send
 
       - store_test_results:
           path: /home/circleci/erleans/_build/test/logs/
