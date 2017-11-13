@@ -1,5 +1,9 @@
-erleans [![CircleCI](https://circleci.com/gh/SpaceTime-IoT/erleans.svg?style=svg)](https://circleci.com/gh/SpaceTime-IoT/erleans)
+erleans
 =====
+
+[![CircleCI](https://circleci.com/gh/SpaceTime-IoT/erleans.svg?style=svg)](https://circleci.com/gh/SpaceTime-IoT/erleans)
+
+[![Coverage Status](https://coveralls.io/repos/github/SpaceTime-IoT/erleans/badge.svg?branch=master)](https://coveralls.io/github/SpaceTime-IoT/erleans?branch=master)
 
 ## Components
 
