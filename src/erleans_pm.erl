@@ -89,17 +89,18 @@ whereis_name(GrainRef) ->
         Pid when is_pid(Pid) ->
             Pid;
         _ ->
-            case lasp_pg:members(GrainRef) of
-                {ok, Set} ->
-                    case sets:to_list(Set) of
-                        [Pid | _] ->
-                            Pid;
-                        _ ->
-                            undefined
-                    end;
-                _ ->
-                    undefined
-            end
+            undefined
+            %% case lasp_pg:members(GrainRef) of
+            %%     {ok, Set} ->
+            %%         case sets:to_list(Set) of
+            %%             [Pid | _] ->
+            %%                 Pid;
+            %%             _ ->
+            %%                 undefined
+            %%         end;
+            %%     _ ->
+            %%         undefined
+            %% end
     end.
 
 -spec send(Name :: term(), Message :: term()) -> pid().

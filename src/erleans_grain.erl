@@ -247,7 +247,7 @@ init(Parent, GrainRef) ->
                 {_, Pid} when Pid =/= Self ->
                     proc_lib:init_ack(Parent, {error, {already_started, Pid}});
                 {_, _Pid} ->
-                    erleans_pm:register_name(GrainRef, Self),
+                    %% erleans_pm:register_name(GrainRef, Self),
                     init_(Parent, GrainRef)
             end
     end.
@@ -429,7 +429,7 @@ finalize_and_stop(Data=#data{cb_module=CbModule,
                              cb_state=CbData,
                              etag=ETag}) ->
     %% Save to or delete from backing storage.
-    erleans_pm:unregister_name(Ref, self()),
+    %% erleans_pm:unregister_name(Ref, self()),
     gproc:unreg(?stateful(Ref)),
     case erleans_utils:fun_or_default(CbModule, deactivate, 1, [CbData], {ok, CbData}) of
         {save_state, NewCbData={_, PersistentState}} ->
