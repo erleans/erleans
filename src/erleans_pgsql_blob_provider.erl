@@ -38,6 +38,7 @@
 -include("erleans.hrl").
 
 init(_ProviderName, Args) ->
+    application:ensure_all_started(pgsql),
     load_queries(?MODULE, filename:join(code:priv_dir(erleans), "blob_provider.sql")),
     {pool, Args}.
 
