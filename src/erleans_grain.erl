@@ -175,19 +175,26 @@ do_for_ref(GrainRef, Fun) ->
             Pid when is_pid(Pid) ->
                 Fun(Pid);
             undefined ->
-                lager:info("start=~p", [GrainRef]),
-                case activate_grain(GrainRef) of
-                    {ok, undefined} ->
-                        %% the only way the Pid could be `undefined`
-                        %% is an ignore from the statem, which can
-                        %% only happen for `{error, notfound}`
-                        exit({noproc, notfound});
-                    {ok, Pid} ->
+                case filter_remote(rpc:multicall(nodes(), erleans_pm, whereis_name, [GrainRef])) of
+                    Pid when is_pid(Pid) ->
+                        %% how to handle remote unregistration?
+                        gproc:reg_other(?stateful(GrainRef), Pid),
                         Fun(Pid);
-                    {error, {already_started, Pid}} ->
-                        Fun(Pid);
-                    {error, Error} ->
-                        exit({noproc, Error})
+                    undefined ->
+                        lager:info("start=~p", [GrainRef]),
+                        case activate_grain(GrainRef) of
+                            {ok, undefined} ->
+                                %% the only way the Pid could be `undefined`
+                                %% is an ignore from the statem, which can
+                                %% only happen for `{error, notfound}`
+                                exit({noproc, notfound});
+                            {ok, Pid} ->
+                                Fun(Pid);
+                            {error, {already_started, Pid}} ->
+                                Fun(Pid);
+                            {error, Error} ->
+                                exit({noproc, Error})
+                        end
                 end
         end
     catch
@@ -195,6 +202,17 @@ do_for_ref(GrainRef, Fun) ->
         exit:{Reason, _} when Reason =:= {shutdown, deactivated}
                             ; Reason =:= normal ->
             do_for_ref(GrainRef, Fun)
+    end.
+
+filter_remote({ResL, _Bad}) ->
+    case lists:filter(fun (P) when is_pid(P) ->
+                              true;
+                          (_) ->
+                              false
+                      end, ResL) of
+        [] -> undefined;
+        [P] -> P;
+        _L -> error(too_many_results) % is this right?
     end.
 
 activate_grain(GrainRef=#{placement := Placement}) ->
