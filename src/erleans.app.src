@@ -16,6 +16,7 @@
     jch,
     eql,
     erlware_commons,
+    pgo,
     vonnegut,
     opencensus
    ]},

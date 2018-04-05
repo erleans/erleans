@@ -21,13 +21,13 @@ all() ->
     ].
 
 init_per_suite(Config) ->
-    application:ensure_all_started(pgsql),
-    application:ensure_all_started(vonnegut),
+    %% application:ensure_all_started(pgo),
+    %% application:ensure_all_started(vonnegut),
     Config.
 
 end_per_suite(_Config) ->
-    application:stop(vonnegut),
-    application:stop(pgsql),
+    %% application:stop(vonnegut),
+    %% application:stop(pgo),
     ok.
 
 init_per_testcase(no_stream_config_check, Config) ->
@@ -64,7 +64,7 @@ simple_subscribe(_Config) ->
     Grain3 = erleans:get_grain(stream_test_grain, <<"simple-subscribe-grain3">>),
     ok = stream_test_grain:subscribe(Grain1, Topic),
     RcrdList = lists:duplicate(5 + rand:uniform(100), <<"repeated simple record">>),
-    erleans_test_utils:produce(Topic, RcrdList),
+    [erleans_test_utils:produce(Topic, [R]) || R <- RcrdList],
     ct:pal("grain1 ~p~n~p", [Grain1, erleans_pm:whereis_name(Grain1)]),
     ?UNTIL(stream_test_grain:records_read(Grain1) >= length(RcrdList)),
 
@@ -90,8 +90,7 @@ grain_wakeup(_Config) ->
         (fun Loop(0) ->
                  {error, took_too_long};
              Loop(N) ->
-                 R = stream_test_grain:records_read(Grain1),
-                 ct:pal("R ~p", [R]),
+                 _R = stream_test_grain:records_read(Grain1),
                  case erleans_pm:whereis_name(Grain1) of
                      Pid when is_pid(Pid)-> {ok, Pid};
                      _ -> timer:sleep(10), Loop(N -1)

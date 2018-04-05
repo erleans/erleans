@@ -28,14 +28,14 @@ init_per_suite(Config) ->
     application:set_env(partisan, gossip_interval, 100),
     application:load(lasp),
     application:ensure_all_started(lager),
-    application:ensure_all_started(pgsql),
+    application:ensure_all_started(pgo),
     {ok, _} = application:ensure_all_started(erleans),
     start_nodes(),
     Config.
 
 end_per_suite(_Config) ->
     application:stop(erleans),
-    application:stop(pgsql),
+    application:stop(pgo),
     application:stop(plumtree),
     application:stop(partisan),
     application:stop(lasp_pg),
@@ -54,7 +54,7 @@ start_nodes([{Node, PeerPort} | T], Acc) ->
                    ets ->
                        "-config ../../../../test/sys.config";
                    postgres ->
-                       "-config ../../../../test/postgres_sys.config"
+                       "-config ../../../../test/db_sys.config"
                end,
     CodePath = code:get_path(),
     {ok, HostNode} = ct_slave:start(Node,
@@ -64,15 +64,26 @@ start_nodes([{Node, PeerPort} | T], Acc) ->
                                      {startup_timeout, 3000},
                                      {startup_functions,
                                       [{code, set_path, [CodePath]},
+                                       {application, load, [lager]},
+                                       {application, set_env,
+                                        [lager, handlers,
+                                         [{lager_console_backend, [{level, debug}]},
+                                          {lager_file_backend,
+                                           [{file, "log/ct_console.log"}, {level, debug}]}]]},
+                                       {application, ensure_all_started, [lager]},
                                        {application, load, [partisan]},
+                                       {application, load, [vonnegut]},
+                                       {application, set_env,
+                                        [vonnegut, http_port, 8001]},
                                        {application, load, [erleans]},
                                        {application, set_env, [partisan, gossip_interval, 100]},
                                        {application, set_env, [partisan, peer_port, PeerPort]},
                                        {application, ensure_all_started, [partisan]},
-                                       {application, ensure_all_started, [pgsql]},
                                        {application, ensure_all_started, [erleans]},
                                        {application, load, [partisan]}]},
                                      {erl_flags, ErlFlags}]),
+    timer:sleep(1000),
+
     ct:print("\e[32m Node ~p [OK] \e[0m", [HostNode]),
     net_kernel:connect(?NODE_A),
     rpc:call(?NODE_A, partisan_peer_service, join, [#{name => ?NODE_CT,
@@ -91,7 +102,7 @@ manual_start_stop(_Config) ->
     ?assertEqual({ok, 1}, rpc:call(?NODE_A, test_grain, activated_counter, [Grain2])),
 
     %% ensure we've waited a broadcast interval
-    timer:sleep(200),
+    timer:sleep(500),
 
     %% verify grain1 is on node ct and grain2 is on node a
     ?assertEqual({ok, ?NODE_CT}, test_grain:node(Grain1)),

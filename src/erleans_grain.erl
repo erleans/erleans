@@ -139,7 +139,7 @@ call(GrainRef, Request, Timeout) ->
     ReqType = req_type(),
     do_for_ref(GrainRef, fun(Pid) ->
                              try
-                                 gen_statem:call(Pid, {ocp:context(), ReqType, Request}, Timeout)
+                                 gen_statem:call(Pid, {ocp:current_span_ctx(), ReqType, Request}, Timeout)
                              catch
                                  exit:{bad_etag, _} ->
                                      lager:error("at=grain_exit reason=bad_etag", []),
@@ -150,7 +150,7 @@ call(GrainRef, Request, Timeout) ->
 -spec cast(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 cast(GrainRef, Request) ->
     ReqType = req_type(),
-    do_for_ref(GrainRef, fun(Pid) -> gen_statem:cast(Pid, {ocp:context(), ReqType, Request}) end).
+    do_for_ref(GrainRef, fun(Pid) -> gen_statem:cast(Pid, {ocp:current_span_ctx(), ReqType, Request}) end).
 
 req_type() ->
     case get(req_type) of
@@ -323,11 +323,11 @@ active({call, From}, {undefined, ReqType, Msg}, Data=#data{cb_module=CbModule,
                                                            cb_state=CbData,
                                                            deactivate_after=DeactivateAfter}) ->
     handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter));
-active({call, From}, {TraceContext, ReqType, Msg}, Data=#data{cb_module=CbModule,
+active({call, From}, {SpanCtx, ReqType, Msg}, Data=#data{cb_module=CbModule,
                                                               cb_state=CbData,
                                                               deactivate_after=DeactivateAfter}) ->
-    ocp:start_trace(TraceContext),
-    ocp:start_span(span_name(Msg)),
+    ocp:with_span_ctx(SpanCtx),
+    ocp:with_child_span(span_name(Msg)),
     ocp:put_attribute(<<"grain_msg">>, io_lib:format("~p", [Msg])),
     try handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter))
     after
@@ -337,11 +337,11 @@ active(cast, {undefined, ReqType, Msg}, Data=#data{cb_module=CbModule,
                                                    cb_state=CbData,
                                                    deactivate_after=DeactivateAfter}) ->
     handle_result(CbModule:handle_cast(Msg, CbData), Data, upd_timer(ReqType, DeactivateAfter));
-active(cast, {TraceContext, ReqType, Msg}, Data=#data{cb_module=CbModule,
+active(cast, {SpanCtx, ReqType, Msg}, Data=#data{cb_module=CbModule,
                                                       cb_state=CbData,
                                                       deactivate_after=DeactivateAfter}) ->
-    ocp:start_trace(TraceContext),
-    ocp:start_span(span_name(Msg)),
+    ocp:with_span_ctx(SpanCtx),
+    ocp:with_child_span(span_name(Msg)),
     ocp:put_attribute(<<"grain_msg">>, io_lib:format("~p", [Msg])),
     try handle_result(CbModule:handle_cast(Msg, CbData), Data, upd_timer(ReqType, DeactivateAfter))
     after

@@ -24,8 +24,6 @@
 
 -export([init/2,
          post_init/2,
-         connect/1,
-         close/1,
          all/2,
          delete/3,
          read/3,
@@ -36,11 +34,15 @@
          update/7]).
 
 -include("erleans.hrl").
+-include_lib("pgo/include/pgo.hrl").
 
-init(_ProviderName, Args) ->
-    application:ensure_all_started(pgsql),
+init(ProviderName, ProviderArgs) ->
+    application:ensure_all_started(pgo),
     load_queries(?MODULE, filename:join(code:priv_dir(erleans), "blob_provider.sql")),
-    {pool, Args}.
+    {args, Args} = lists:keyfind(args, 1, ProviderArgs),
+    {ok, #{id => ProviderName,
+           start => {pgo_pool, start_link, [ProviderName, Args]},
+           shutdown => 1000}}.
 
 post_init(ProviderName, _Args) ->
     case do(ProviderName, fun(C) -> create_grains_table(C) end, 10) of
@@ -50,29 +52,17 @@ post_init(ProviderName, _Args) ->
             ok
     end.
 
-connect(Args) ->
-    case pgsql_connection:open(Args) of
-        {pgsql_connection, Pid} ->
-            {ok, Pid};
-        {error, Reason} ->
-            lager:error("pgsql_connection:open failed reason=~p", [Reason]),
-            error
-    end.
-
-close(Pid) ->
-    pgsql_connection:close({pgsql_connection, Pid}).
-
 all(Type, ProviderName) ->
     do(ProviderName, fun(C) -> all_(Type, C) end).
 
 read(Type, ProviderName, Id) ->
     do(ProviderName, fun(C) ->
-                         case read(Id, Type, erlang:phash2({Id, Type}), C) of
-                             {ok, {_, _, ETag, State}} ->
-                                 {ok, binary_to_term(State), ETag};
-                             error ->
-                                 not_found
-                         end
+                             case read(Id, Type, erlang:phash2({Id, Type}), C) of
+                                 {ok, {_, _, ETag, State}} ->
+                                     {ok, binary_to_term(State), ETag};
+                                 error ->
+                                     not_found
+                             end
                      end).
 
 delete(Type, ProviderName, Id) ->
@@ -105,75 +95,70 @@ do(_ProviderName, _Fun, 0) ->
     lager:error("failed to obtain database connection"),
     {error, no_db_connection};
 do(ProviderName, Fun, Retry) ->
-    C = erleans_conn_manager:get_connection(ProviderName),
-    try C of
-        {error, timeout} ->
-            timer:sleep(200),
-            do(ProviderName, Fun, Retry-1);
+    case pgo:checkout(ProviderName) of
+        {ok, Ref, Conn} ->
+            try Fun(Conn)
+            after
+                pgo:checkin(Ref, Conn)
+            end;
         _ ->
-            Fun(C)
-    after
-        erleans_conn_manager:done(ProviderName, C)
+            timer:sleep(200),
+            do(ProviderName, Fun, Retry-1)
     end.
 
 create_grains_table(C) ->
-    {{create,table},[]} = pgsql_connection:simple_query(query(create_table), {pgsql_connection, C}),
-    pgsql_connection:simple_query(query(create_idx), {pgsql_connection, C}).
+    #pg_result{command=create} = pgo:query(C, query(create_table)),
+    pgo:query(C, query(create_idx)).
 
 all_(Type, C) ->
     Q = query(select_all),
-    {{select, _}, Rows} = pgsql_connection:extended_query(Q, [atom_to_binary(Type, utf8)], {pgsql_connection, C}),
+    #pg_result{command=select, rows=Rows} = pgo:query(C, Q, [atom_to_binary(Type, utf8)]),
     {ok, [{binary_to_term(IdBin), Type, ETag, binary_to_term(StateBin)}
-         || {IdBin, ETag, StateBin} <- Rows]}.
+          || {IdBin, ETag, StateBin} <- Rows]}.
 
 
 read(Id, Type, RefHash, C) ->
     Q = query(select),
     RefHash = erlang:phash2({Id, Type}),
-    {{select, _}, Rows} = pgsql_connection:extended_query(Q, [RefHash, atom_to_binary(Type, unicode)],
-                                                          {pgsql_connection, C}),
+    #pg_result{command=select, rows=Rows} = pgo:query(C, Q, [RefHash, atom_to_binary(Type, unicode)]),
     IdBin = term_to_binary(Id),
     TypeBin = atom_to_binary(Type, utf8),
     ec_lists:find(fun({RowId, RowType, _, _}) when IdBin =:= RowId
-                                                 , TypeBin =:= RowType-> true;
+                                                   , TypeBin =:= RowType-> true;
                      (_) ->
-                      false
+                          false
                   end, Rows).
 
 delete(Id, Type, RefHash, C) ->
     Q = query(delete),
     RefHash = erlang:phash2({Id, Type}),
-    case pgsql_connection:extended_query(Q, [RefHash,
-                                             term_to_binary(Id),
-                                             atom_to_binary(Type, unicode)],
-                                         {pgsql_connection, C}) of
-        {{delete, 0}, []} ->
+    case pgo:query(C, Q, [RefHash,
+                          term_to_binary(Id),
+                          atom_to_binary(Type, unicode)]) of
+        #pg_result{command=delete} ->
             ok
     end.
 
 read_by_hash_(Hash, Type, C) ->
     Q = query(select),
-    {{select, _}, Rows} = pgsql_connection:extended_query(Q, [Hash, atom_to_binary(Type, unicode)],
-                                                          {pgsql_connection, C}),
+    #pg_result{command=select, rows=Rows} = pgo:query(C, Q, [Hash, atom_to_binary(Type, unicode)]),
     {ok, [{binary_to_term(IdBin), Type, ETag, binary_to_term(StateBin)}
-         || {IdBin, _, ETag, StateBin} <- Rows]}.
+          || {IdBin, _, ETag, StateBin} <- Rows]}.
 
 insert_(Id, Type, RefHash, GrainETag, GrainState, C) ->
     Q = query(insert),
     IdBin = term_to_binary(Id),
-    {{insert, _, 1}, []} = pgsql_connection:extended_query(Q, [IdBin, atom_to_binary(Type, utf8), RefHash,
-                                                               GrainETag, term_to_binary(GrainState)],
-                                                           {pgsql_connection, C}).
+    #pg_result{command=insert} = pgo:query(C, Q, [IdBin, atom_to_binary(Type, utf8), RefHash,
+                                                  GrainETag, term_to_binary(GrainState)]).
 
 update_(Id, Type, RefHash, OldGrainETag, NewGrainETag, GrainState, C) ->
     Q = query(update),
     IdBin = term_to_binary(Id),
-    case pgsql_connection:extended_query(Q, [NewGrainETag, term_to_binary(GrainState), RefHash, IdBin,
-                                             atom_to_binary(Type, utf8), OldGrainETag],
-                                         {pgsql_connection, C}) of
-        {{update, 1}, []} ->
+    case pgo:query(C, Q, [NewGrainETag, term_to_binary(GrainState), RefHash, IdBin,
+                          atom_to_binary(Type, utf8), OldGrainETag]) of
+        #pg_result{command=update, num_rows=1} ->
             ok;
-        {{update, 0}, []} ->
+        #pg_result{command=update, num_rows=0} ->
             {error, bad_etag}
     end.
 

@@ -20,7 +20,7 @@
 %%% ---------------------------------------------------------------------------
 -module(erleans_provider).
 
--callback init(ProviderName :: atom(), Args :: list()) -> ok | {pool, Args :: list()}.
+-callback init(ProviderName :: atom(), Args :: list()) -> ok | {ok, supervisor:child_spec()}.
 
 -callback post_init(ProviderName :: atom(), Args :: list()) -> ok.
 

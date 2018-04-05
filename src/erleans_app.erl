@@ -48,14 +48,10 @@ init_providers() ->
         erleans_config:get(stream_providers, []),
     lists:foldl(fun({ProviderName, Args}, Acc) ->
                     case init_provider(ProviderName, Args) of
-                        {pool, Args1} ->
-                            [#{id => {pool, ProviderName},
-                               start => {erleans_provider_pool_sup, start_link, [ProviderName, Args1]},
-                               restart => permanent,
-                               type => supervisor,
-                               shutdown => 5000} | Acc];
                         ok ->
                             Acc;
+                        {ok, ChildSpec} ->
+                            [ChildSpec | Acc];
                         {error, Reason} ->
                             lager:error("failed to initialize provider ~s: reason=~p", [ProviderName, Reason]),
                             Acc

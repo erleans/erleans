@@ -20,14 +20,14 @@ all() ->
     [single_timer, multiple_timers, crashy_timer, timer_shutdown].
 
 init_per_suite(Config) ->
-    application:ensure_all_started(pgsql),
+    application:ensure_all_started(pgo),
     application:load(erleans),
     {ok, _} = application:ensure_all_started(erleans),
     Config.
 
 end_per_suite(_Config) ->
     application:stop(erleans),
-    application:stop(pgsql),
+    application:stop(pgo),
     ok.
 
 init_per_testcase(_, Config) ->

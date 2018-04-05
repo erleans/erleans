@@ -31,8 +31,8 @@
 -define(SERVER, ?MODULE).
 
 -spec start_link(list()) -> {ok, pid()}.
-start_link(ProviderPoolSpecs) ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, [ProviderPoolSpecs]).
+start_link(ProviderSpecs) ->
+    supervisor:start_link({local, ?SERVER}, ?MODULE, [ProviderSpecs]).
 
 start_partitions_sup() ->
     supervisor:start_child(?SERVER, #{id => erleans_partitions_sup,
@@ -41,7 +41,7 @@ start_partitions_sup() ->
                                       type => supervisor,
                                       shutdown => 5000}).
 
-init([ProviderPools]) ->
+init([ProviderSpecs]) ->
     SupFlags = #{strategy => one_for_one,
                  intensity => 0,
                  period => 1},
@@ -54,7 +54,7 @@ init([ProviderPools]) ->
                     start => {erleans_discovery, start_link, []},
                     restart => permanent,
                     type => worker,
-                    shutdown => 5000} | ProviderPools],
+                    shutdown => 5000} | ProviderSpecs],
     {ok, {SupFlags, ChildSpecs}}.
 
 %%====================================================================
