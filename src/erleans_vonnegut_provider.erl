@@ -29,17 +29,18 @@
 -include("erleans.hrl").
 
 init(_Name, _Args) ->  %% TODO: fix before PR to actually honor these
-    ok = vg_client_pool:start().
+    application:ensure_all_started(vonnegut),
+    timer:sleep(1000),
+    ok = vg_client_pool:start(),
+    ok.
 
 fetch(TopicOffsets) ->
     [case (catch vg_client:fetch(Topic, Offset)) of
-         {ok, #{record_set := [],
-                high_water_mark := _HWM}} ->
-             lager:info("hwm ~p", [_HWM]),
+         {ok, #{Topic := #{0 := #{record_batches := [],
+                                  high_water_mark := _HWM}}}} ->
              {Topic, {Offset, []}};
-         {ok, #{record_set := Sets,
-                high_water_mark := _HWM}} ->
-             lager:info("hwm ~p", [_HWM]),
+         {ok, #{Topic := #{0 := #{record_batches := Sets,
+                                  high_water_mark := _HWM}}}} ->
              {IDs, Records} = lists:unzip([decode_fetch(Set) || Set <- Sets]),
              MaxOffset = lists:max(IDs),
              {Topic,
@@ -47,7 +48,7 @@ fetch(TopicOffsets) ->
          {error, _} = E ->
              E;
          {'EXIT', _} ->
-             {error, not_found}
+             {error, {Topic, not_found}}
      end
      || {Topic, Offset} <- TopicOffsets].
 
@@ -63,7 +64,6 @@ produce(TopicRecordSets) ->
 %%%% internal
 
 
-decode_fetch(#{crc := _CRC,
-               id := ID,
-               record := Record}) ->
+decode_fetch(#{offset := ID,
+               value := Record}) ->
     {ID, Record}.

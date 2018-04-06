@@ -53,14 +53,12 @@ handle_info( {_, {go, _Ref, {Stream=#{stream_module   := StreamModule,
                [Topic, StreamModule, Offset]),
     case StreamModule:fetch([{Topic, Offset}]) of
         %% I'm not sure this is a good idea, but eases races?
-        [{error, not_found}] ->
-            lager:warning("error=nonexistent_topic"),
+        [{error, {Topic, not_found}}] ->
             NewOffset = Offset;
         [] ->
-            lager:info("no new records"),
             NewOffset = Offset;
         [{Topic, {NewOffset, []}}] ->
-            lager:info("no new records");
+            ok;
         [{Topic, {NewOffset, RecordSet}}] ->
             ec_plists:foreach(fun(G) ->
                                   erleans_grain:call(G, {stream, Topic, RecordSet})
@@ -68,7 +66,6 @@ handle_info( {_, {go, _Ref, {Stream=#{stream_module   := StreamModule,
     end,
 
     erleans_stream_manager:next(Stream, SubRef, NewOffset),
-    lager:info("at=fetch_finished"),
     sbroker:async_ask_r(?STREAM_BROKER),
     {noreply, State}.
 

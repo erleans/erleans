@@ -8,7 +8,6 @@ produce(Topic, Records) ->
             %% ets tables aren't shared, so ned to do this on every node in the cluster
             [rpc:call(N, test_stream, produce, [[{Topic, Records}]]) || N <- [node() | nodes()]];
         _ ->
-            ok = vg_client_pool:start(),
             {ok, HWM} = vg_client:produce(Topic, Records),
             ct:pal("wrote records to vgt, hwm = ~p", [HWM])
     end.
