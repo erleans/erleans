@@ -101,7 +101,7 @@ jobs:
             rebar3 as db do test, cover
             rebar3 covertool generate
             apk add --update python python-dev py-pip
-            pip install codecov && codecov -f _build/test/cover/ct.coverdata
+            pip install codecov && codecov -f _build/test/covertool/erleans.covertool.xml
 
       - store_test_results:
           path: /home/circleci/erleans/_build/test/logs/
