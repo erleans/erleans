@@ -34,7 +34,6 @@
          update/7]).
 
 -include("erleans.hrl").
--include_lib("pgo/include/pgo.hrl").
 
 init(ProviderName, ProviderArgs) ->
     application:ensure_all_started(pgo),
@@ -107,12 +106,12 @@ do(ProviderName, Fun, Retry) ->
     end.
 
 create_grains_table(C) ->
-    #pg_result{command=create} = pgo:query(C, query(create_table)),
+    #{command := create} = pgo:query(C, query(create_table)),
     pgo:query(C, query(create_idx)).
 
 all_(Type, C) ->
     Q = query(select_all),
-    #pg_result{command=select, rows=Rows} = pgo:query(C, Q, [atom_to_binary(Type, utf8)]),
+    #{command := select, rows := Rows} = pgo:query(C, Q, [atom_to_binary(Type, utf8)]),
     {ok, [{binary_to_term(IdBin), Type, ETag, binary_to_term(StateBin)}
           || {IdBin, ETag, StateBin} <- Rows]}.
 
@@ -120,7 +119,7 @@ all_(Type, C) ->
 read(Id, Type, RefHash, C) ->
     Q = query(select),
     RefHash = erlang:phash2({Id, Type}),
-    #pg_result{command=select, rows=Rows} = pgo:query(C, Q, [RefHash, atom_to_binary(Type, unicode)]),
+    #{command := select, rows := Rows} = pgo:query(C, Q, [RefHash, atom_to_binary(Type, unicode)]),
     IdBin = term_to_binary(Id),
     TypeBin = atom_to_binary(Type, utf8),
     ec_lists:find(fun({RowId, RowType, _, _}) when IdBin =:= RowId
@@ -135,20 +134,20 @@ delete(Id, Type, RefHash, C) ->
     case pgo:query(C, Q, [RefHash,
                           term_to_binary(Id),
                           atom_to_binary(Type, unicode)]) of
-        #pg_result{command=delete} ->
+        #{command := delete} ->
             ok
     end.
 
 read_by_hash_(Hash, Type, C) ->
     Q = query(select),
-    #pg_result{command=select, rows=Rows} = pgo:query(C, Q, [Hash, atom_to_binary(Type, unicode)]),
+    #{command := select, rows := Rows} = pgo:query(C, Q, [Hash, atom_to_binary(Type, unicode)]),
     {ok, [{binary_to_term(IdBin), Type, ETag, binary_to_term(StateBin)}
           || {IdBin, _, ETag, StateBin} <- Rows]}.
 
 insert_(Id, Type, RefHash, GrainETag, GrainState, C) ->
     Q = query(insert),
     IdBin = term_to_binary(Id),
-    #pg_result{command=insert} = pgo:query(C, Q, [IdBin, atom_to_binary(Type, utf8), RefHash,
+    #{command := insert} = pgo:query(C, Q, [IdBin, atom_to_binary(Type, utf8), RefHash,
                                                   GrainETag, term_to_binary(GrainState)]).
 
 update_(Id, Type, RefHash, OldGrainETag, NewGrainETag, GrainState, C) ->
@@ -156,9 +155,9 @@ update_(Id, Type, RefHash, OldGrainETag, NewGrainETag, GrainState, C) ->
     IdBin = term_to_binary(Id),
     case pgo:query(C, Q, [NewGrainETag, term_to_binary(GrainState), RefHash, IdBin,
                           atom_to_binary(Type, utf8), OldGrainETag]) of
-        #pg_result{command=update, num_rows=1} ->
+        #{command := update, num_rows := 1} ->
             ok;
-        #pg_result{command=update, num_rows=0} ->
+        #{command := update, num_rows := 0} ->
             {error, bad_etag}
     end.
 

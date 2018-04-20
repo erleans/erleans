@@ -35,7 +35,7 @@
  {<<"partisan">>,{pkg,<<"partisan">>,<<"2.0.0">>},0},
  {<<"pgo">>,
   {git,"https://github.com/spacetime-iot/pgo.git",
-       {ref,"30e2ffa0a2b9c0cab016dca9aaafd0a4e8dcb6ae"}},
+       {ref,"7b0176f07f7c149e6e0b2623413013ae4aa0d177"}},
   0},
  {<<"plumtree">>,{pkg,<<"plumtree">>,<<"0.5.0">>},1},
  {<<"prometheus">>,{pkg,<<"prometheus">>,<<"4.1.0">>},1},
