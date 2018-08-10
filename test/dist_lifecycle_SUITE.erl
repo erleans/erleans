@@ -24,6 +24,7 @@ init_per_suite(Config) ->
     application:load(partisan),
     application:load(erleans),
     application:set_env(partisan, peer_port, 10200),
+    application:set_env(partisan, pid_encoding, false),
     %% lower gossip interval of partisan membership so it triggers more often in tests
     application:set_env(partisan, gossip_interval, 100),
     application:load(lasp),
@@ -76,6 +77,7 @@ start_nodes([{Node, PeerPort} | T], Acc) ->
                                        {application, set_env,
                                         [vonnegut, http_port, 8001]},
                                        {application, load, [erleans]},
+                                       {application, set_env, [partisan, pid_encoding, false]},
                                        {application, set_env, [partisan, gossip_interval, 100]},
                                        {application, set_env, [partisan, peer_port, PeerPort]},
                                        {application, ensure_all_started, [partisan]},
@@ -85,7 +87,7 @@ start_nodes([{Node, PeerPort} | T], Acc) ->
     timer:sleep(1000),
 
     ct:print("\e[32m Node ~p [OK] \e[0m", [HostNode]),
-    net_kernel:connect(?NODE_A),
+    net_kernel:connect_node(?NODE_A),
     rpc:call(?NODE_A, partisan_peer_service, join, [#{name => ?NODE_CT,
                                                       listen_addrs => [#{ip => {127,0,0,1}, port => 10200}],
                                                       parallelism => 1}]),
