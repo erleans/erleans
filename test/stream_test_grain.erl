@@ -46,7 +46,6 @@ records_read(Ref) ->
     erleans_grain:call(Ref, records_read).
 
 activate(#{id := _Id}, State=#{}) ->
-    ct:pal("starting or waking up? ~p", [State]),
     {ok, State, #{}}.
 
 handle_call({subscribe, Topic, Offset}, From, State) ->
@@ -64,9 +63,6 @@ handle_call(reset, From, State) ->
     {ok, State#{records_read => 0}, [{reply, From, ok}]};
 handle_call({stream, _Topic, Records}, From, State) ->
     RecordsRead = maps:get(records_read, State, 0),
-    ct:pal("got stream message for topic ~p with ~p records, ~p previous",
-           [_Topic, length(Records), RecordsRead]),
-    ct:pal("records ~p", [Records]),
     Len = length(Records),
     {ok, State#{records_read => RecordsRead + Len}, [{reply, From, ok}]}.
 
@@ -77,7 +73,6 @@ handle_info(_, State) ->
     {ok, State}.
 
 deactivate(State) ->
-    ct:pal("shutting down! ~p", [State]),
     {ok, State}.
 
 %%%===================================================================

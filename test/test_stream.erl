@@ -11,10 +11,9 @@ init(_Name, _Args) ->
     ok.
 
 fetch(TopicOffsets) ->
-    ct:pal("fetching ~p", [TopicOffsets]),
     [case ets:lookup(test_stream, Topic) of
          [] ->
-             {error, not_found};
+             {error, {Topic, not_found}};
          [{_, Records}] ->
              Tail = lists:nthtail(Offset, Records),
              LTail = length(Tail),
@@ -23,7 +22,6 @@ fetch(TopicOffsets) ->
      || {Topic, Offset} <- TopicOffsets].
 
 produce(TopicRecords) ->
-    ct:pal("producing ~p", [TopicRecords]),
     [case ets:lookup(test_stream, Topic) of
          [] ->
              ets:insert(test_stream, {Topic, Records});
