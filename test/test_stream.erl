@@ -13,7 +13,7 @@ init(_Name, _Args) ->
 fetch(TopicOffsets) ->
     [case ets:lookup(test_stream, Topic) of
          [] ->
-             {error, not_found};
+             {error, {Topic, not_found}};
          [{_, Records}] ->
              Tail = lists:nthtail(Offset, Records),
              LTail = length(Tail),
