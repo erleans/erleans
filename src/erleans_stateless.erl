@@ -16,50 +16,43 @@
 
 -module(erleans_stateless).
 
--export([pick_grain/1,
-         enqueue_grain/2]).
+-export([pick_grain/2]).
 
 -include("erleans.hrl").
 
--dialyzer({nowarn_function, enqueue_grain/2}).
+-define(STATELESS_WAIT, 1000).
 
--spec pick_grain(erleans:grain_ref()) -> {ok, pid()} | {error, timeout}.
-pick_grain(GrainRef = #{placement := {stateless, N}}) ->
-    try
-        %% ask but don't enqueue the ask
-        case sbroker:nb_ask(?broker(GrainRef)) of
-            {go, _Ref, Value, _RelativeTime, _SojournTime} ->
-                {ok, Value};
-            {drop, _SojournTime} ->
-                %% check if the number of activations is less than the max allowed
-                case gproc:get_value({rc,l,GrainRef}) of
-                    V when V < N ->
-                        %% fewer grains activated than the max allowed
-                        %% so create a new one
-                        erleans_grain_sup:start_child(node(), GrainRef);
-                    _ ->
-                        %% enqueue the ask
-                        case sbroker:ask(?broker(GrainRef)) of
-                            {go, _Ref, Value, _RelativeTime, _SojournTime} ->
-                                {ok, Value};
-                            {drop, _} ->
-                                %% give up
-                                {error, timeout}
-                        end
-                end
-        end
+-spec pick_grain(erleans:grain_ref(), function()) -> {ok, term()} | {error, timeout}.
+pick_grain(GrainRef = #{placement := {stateless, N}}, Fun) ->
+    try gproc_pool:claim(?pool(GrainRef), Fun, nowait) of
+        {true, Res} ->
+            {ok, Res};
+        false ->
+            %% check if the number of activations is less than the max allowed
+            case gproc_pool:active_workers(?pool(GrainRef)) of
+                W when length(W) < N ->
+                    %% fewer grains activated than the max allowed
+                    %% so create a new one
+                    {ok, _Pid} = erleans_grain_sup:start_child(node(), GrainRef),
+                    claim_with_wait(GrainRef, Fun);
+                _ ->
+                    claim_with_wait(GrainRef, Fun)
+            end
     catch
-        exit:{noproc, _} ->
+        error:badarg ->
             %% no pool started for these grains, let's start one
-            erleans_stateless_broker:start_link(GrainRef),
-            %% spawn a new activation as well and use it.
-            %% Note: a large burst could mean we end up with more than the max
-            %% activations allowed if they happen to have a noproc thrown
-            %% before one of them can spawn the broker
-            erleans_grain_sup:start_child(node(), GrainRef)
+            gproc_pool:new(?pool(GrainRef), claim, [{autosize, true}]),
+            %% does not support going over N during bursts
+            %% TODO: revisit burst support
+            %% spawn a new activation and use it
+            {ok, _Pid} = erleans_grain_sup:start_child(node(), GrainRef),
+            claim_with_wait(GrainRef, Fun)
     end.
 
--spec enqueue_grain(erleans:grain_ref(), pid()) -> {await, reference(), pid()} | {drop, 0}.
-enqueue_grain(GrainRef, Pid) ->
-    erleans_stateless_broker:start_link(GrainRef),
-    sbroker:async_ask_r(?broker(GrainRef), Pid, {Pid, erleans_grain_tag}).
+claim_with_wait(GrainRef, Fun) ->
+    case gproc_pool:claim(?pool(GrainRef), Fun, {busy_wait, ?STATELESS_WAIT}) of
+        {true, Res} ->
+            {ok, Res};
+        false ->
+            {error, timeout}
+    end.

@@ -137,7 +137,7 @@ call(GrainRef, Request) ->
 -spec call(GrainRef :: erleans:grain_ref(), Request :: term(), non_neg_integer() | infinity) -> Reply :: term().
 call(GrainRef, Request, Timeout) ->
     ReqType = req_type(),
-    do_for_ref(GrainRef, fun(Pid) ->
+    do_for_ref(GrainRef, fun(_, Pid) ->
                              try
                                  gen_statem:call(Pid, {ocp:current_span_ctx(), ReqType, Request}, Timeout)
                              catch
@@ -150,7 +150,7 @@ call(GrainRef, Request, Timeout) ->
 -spec cast(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 cast(GrainRef, Request) ->
     ReqType = req_type(),
-    do_for_ref(GrainRef, fun(Pid) -> gen_statem:cast(Pid, {ocp:current_span_ctx(), ReqType, Request}) end).
+    do_for_ref(GrainRef, fun(_, Pid) -> gen_statem:cast(Pid, {ocp:current_span_ctx(), ReqType, Request}) end).
 
 req_type() ->
     case get(req_type) of
@@ -161,11 +161,11 @@ req_type() ->
     end.
 
 do_for_ref(GrainPid, Fun) when is_pid(GrainPid) ->
-    Fun(GrainPid);
+    Fun(noname, GrainPid);
 do_for_ref(GrainRef=#{placement := {stateless, _N}}, Fun) ->
-    case erleans_stateless:pick_grain(GrainRef) of
-        {ok, Pid} when is_pid(Pid) ->
-            Fun(Pid);
+    case erleans_stateless:pick_grain(GrainRef, Fun) of
+        {ok, Res} ->
+            Res;
         _ ->
             exit(timeout)
     end;
@@ -173,7 +173,7 @@ do_for_ref(GrainRef, Fun) ->
     try
         case erleans_pm:whereis_name(GrainRef) of
             Pid when is_pid(Pid) ->
-                Fun(Pid);
+                Fun(noname, Pid);
             undefined ->
                 lager:info("start=~p", [GrainRef]),
                 case activate_grain(GrainRef) of
@@ -183,9 +183,9 @@ do_for_ref(GrainRef, Fun) ->
                         %% only happen for `{error, notfound}`
                         exit({noproc, notfound});
                     {ok, Pid} ->
-                        Fun(Pid);
+                        Fun(noname, Pid);
                     {error, {already_started, Pid}} ->
-                        Fun(Pid);
+                        Fun(noname, Pid);
                     {error, Error} ->
                         exit({noproc, Error})
                 end
@@ -236,8 +236,6 @@ init(Parent, GrainRef) ->
 
     case GrainRef of
         #{placement := {stateless, _N}} ->
-            gproc:reg(?stateless_counter(GrainRef)),
-            gproc:reg_other(?stateless(GrainRef), self()),
             init_(Parent, GrainRef);
         _->
             Self = self(),
@@ -270,7 +268,7 @@ init_(Parent, GrainRef=#{id := Id,
                              new_state(CbModule, Id)
                       end,
 
-    maybe_enqueue_grain(GrainRef),
+    maybe_add_worker(GrainRef),
 
     case CbData of
         notfound ->
@@ -376,15 +374,11 @@ timer_check(Data) ->
             {keep_state, Data, [{state_timeout, 50, check_timers}]}
     end.
 
-handle_event(_, {erleans_grain_tag, {go, _, _, _, _}}, _, _Data) ->
-    %% checked out
-    keep_state_and_data;
-handle_event(_, {erleans_grain_tag, {drop, _}}, _, _Data) ->
-    %% dropped from queue
-    keep_state_and_data;
 handle_event(_, {cancel_timer, _Pid, _TimeLeft}, _, _Data) ->
     %% filter these out
     keep_state_and_data;
+handle_event(info, {'EXIT', _, Reason}, _, Data) ->
+    {stop, {shutdown, Reason}, Data};
 handle_event(_, Message, _, Data=#data{cb_module=CbModule,
                                        cb_state=CbData}) ->
     Reply = erleans_utils:fun_or_default(CbModule, handle_info, 2, [Message, CbData], {ok, CbData}),
@@ -393,15 +387,19 @@ handle_event(_, Message, _, Data=#data{cb_module=CbModule,
 code_change(_OldVsn, State, Data, _Extra) ->
     {ok, State, Data}.
 
-terminate({shutdown, deactivated}, _State, _Data) ->
+terminate({shutdown, deactivated}, _State, #data{ref=GrainRef}) ->
+    maybe_remove_worker(GrainRef),
     ok;
 terminate(?NO_PROVIDER_ERROR, _State, #data{cb_module=CbModule,
-                                            id=Id}) ->
+                                            id=Id,
+                                            ref=GrainRef}) ->
+    maybe_remove_worker(GrainRef),
     lager:error("attempted to save without storage provider configured: id=~p cb_module=~p", [Id, CbModule]),
     %% We do not want to call the deactivate callback here because this
     %% is not a deactivation, it is a hard crash.
     ok;
-terminate(Reason, _State, Data) ->
+terminate(Reason, _State, Data=#data{ref=GrainRef}) ->
+    maybe_remove_worker(GrainRef),
     lager:info("at=terminate reason=~p", [Reason]),
     %% supervisor is terminating, node is probably shutting down.
     %% deactivate the grain so it can clean up and save if needed
@@ -409,6 +407,24 @@ terminate(Reason, _State, Data) ->
     ok.
 
 %% Internal functions
+
+maybe_add_worker(GrainRef=#{placement := {stateless, _}}) ->
+    gproc_pool:add_worker(?pool(GrainRef), self()),
+    gproc_pool:connect_worker(?pool(GrainRef), self());
+maybe_add_worker(_) ->
+    ok.
+
+maybe_remove_worker(GrainRef=#{placement := {stateless, _}}) ->
+    gproc_pool:disconnect_worker(?pool(GrainRef), self()),
+    gproc_pool:remove_worker(?pool(GrainRef), self());
+maybe_remove_worker(_) ->
+    ok.
+
+maybe_unregister(#{placement := {stateless, _}}) ->
+    ok;
+maybe_unregister(GrainRef) ->
+    erleans_pm:unregister_name(GrainRef, self()),
+    gproc:unreg(?stateful(GrainRef)).
 
 upd_timer(leave_timer, _) ->
     [];
@@ -429,8 +445,8 @@ finalize_and_stop(Data=#data{cb_module=CbModule,
                              cb_state=CbData,
                              etag=ETag}) ->
     %% Save to or delete from backing storage.
-    erleans_pm:unregister_name(Ref, self()),
-    gproc:unreg(?stateful(Ref)),
+    maybe_unregister(Ref),
+
     case erleans_utils:fun_or_default(CbModule, deactivate, 1, [CbData], {ok, CbData}) of
         {save_state, NewCbData={_, PersistentState}} ->
             NewETag = update_state(CbModule, Provider, Id, PersistentState, ETag),
@@ -444,11 +460,9 @@ finalize_and_stop(Data=#data{cb_module=CbModule,
             {stop, {shutdown, deactivated}, Data#data{cb_state=NewCbData}}
     end.
 
-handle_result({ok, NewCbData}, Data=#data{ref=GrainRef}, Actions) ->
-    maybe_enqueue_grain(GrainRef),
+handle_result({ok, NewCbData}, Data=#data{ref=_GrainRef}, Actions) ->
     {keep_state, Data#data{cb_state=NewCbData}, Actions};
-handle_result({ok, NewCbData, CbActions}, Data=#data{ref=GrainRef}, Actions) ->
-    maybe_enqueue_grain(GrainRef),
+handle_result({ok, NewCbData, CbActions}, Data=#data{ref=_GrainRef}, Actions) ->
     {Actions1, Data1} = handle_actions(CbActions, Actions, NewCbData, Data),
     {keep_state, Data1#data{cb_state=NewCbData}, Actions1};
 handle_result({deactivate, NewCbData}, Data, _) ->
@@ -495,11 +509,6 @@ update_state(CbModule, {Provider, ProviderName}, Id, Data, ETag, NewETag) ->
         {error, Reason} ->
             exit(Reason)
     end.
-
-maybe_enqueue_grain(GrainRef = #{placement := {stateless, _}}) ->
-    erleans_stateless:enqueue_grain(GrainRef, self());
-maybe_enqueue_grain(_) ->
-    ok.
 
 verify_etag(CbModule, Id, {Provider, ProviderName}, undefined, D={_, CbData}) ->
     ETag = etag(CbData),
