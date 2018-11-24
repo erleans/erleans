@@ -1,9 +1,9 @@
 erleans
 =====
 
-[![CircleCI](https://circleci.com/gh/SpaceTime-IoT/erleans.svg?style=svg)](https://circleci.com/gh/SpaceTime-IoT/erleans)
+[![CircleCI](https://circleci.com/gh/erleans/erleans.svg?style=svg)](https://circleci.com/gh/erleans/erleans)
 
-[![codecov](https://codecov.io/gh/SpaceTime-IoT/erleans/branch/master/graph/badge.svg)](https://codecov.io/gh/SpaceTime-IoT/erleans)
+[![codecov](https://codecov.io/gh/erleans/erleans/branch/master/graph/badge.svg)](https://codecov.io/gh/erleans/erleans)
 
 
 ## Components
