@@ -27,5 +27,5 @@
 
   {maintainers, ["Tristan Sloughter", "Bryan Hughes", "Evan Vigil-McClanahan", "Andrew Varner"]},
   {licenses, ["Apache 2"]},
-  {links, [{"GitHub", "https://github.com/SpaceTime-IoT/erleans"}]}
+  {links, [{"GitHub", "https://github.com/erleans/erleans"}]}
  ]}.
