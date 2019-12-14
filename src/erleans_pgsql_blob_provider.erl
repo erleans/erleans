@@ -34,6 +34,7 @@
          update/7]).
 
 -include("erleans.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 init(ProviderName, ProviderArgs) ->
     application:ensure_all_started(pgo),
@@ -91,7 +92,7 @@ do(ProviderName, Fun) ->
     do(ProviderName, Fun, 1).
 
 do(_ProviderName, _Fun, 0) ->
-    lager:error("failed to obtain database connection"),
+    ?LOG_ERROR("failed to obtain database connection"),
     {error, no_db_connection};
 do(ProviderName, Fun, Retry) ->
     case pgo:checkout(ProviderName) of

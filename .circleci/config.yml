@@ -48,4 +48,3 @@ workflows:
           <<: *erlang22
           requires:
             - rebar3/cover
-

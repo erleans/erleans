@@ -48,6 +48,7 @@
          code_change/4]).
 
 -include("erleans.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -define(DEFAULT_TIMEOUT, 5000).
 -define(NO_PROVIDER_ERROR, no_provider_configured).
@@ -142,7 +143,7 @@ call(GrainRef, Request, Timeout) ->
                                  gen_statem:call(Pid, {otel:current_span_ctx(), ReqType, Request}, Timeout)
                              catch
                                  exit:{bad_etag, _} ->
-                                     lager:error("at=grain_exit reason=bad_etag", []),
+                                     ?LOG_ERROR("at=grain_exit reason=bad_etag", []),
                                      {exit, saved_etag_changed}
                              end
                          end).
@@ -175,7 +176,7 @@ do_for_ref(GrainRef, Fun) ->
             Pid when is_pid(Pid) ->
                 Fun(noname, Pid);
             undefined ->
-                lager:info("start=~p", [GrainRef]),
+                ?LOG_INFO("start=~p", [GrainRef]),
                 case activate_grain(GrainRef) of
                     {ok, undefined} ->
                         %% the only way the Pid could be `undefined`
@@ -392,13 +393,13 @@ terminate(?NO_PROVIDER_ERROR, _State, #data{cb_module=CbModule,
                                             id=Id,
                                             ref=GrainRef}) ->
     maybe_remove_worker(GrainRef),
-    lager:error("attempted to save without storage provider configured: id=~p cb_module=~p", [Id, CbModule]),
+    ?LOG_ERROR("attempted to save without storage provider configured: id=~p cb_module=~p", [Id, CbModule]),
     %% We do not want to call the deactivate callback here because this
     %% is not a deactivation, it is a hard crash.
     ok;
 terminate(Reason, _State, Data=#data{ref=GrainRef}) ->
     maybe_remove_worker(GrainRef),
-    lager:info("at=terminate reason=~p", [Reason]),
+    ?LOG_INFO("at=terminate reason=~p", [Reason]),
     %% supervisor is terminating, node is probably shutting down.
     %% deactivate the grain so it can clean up and save if needed
     _ = finalize_and_stop(Data),

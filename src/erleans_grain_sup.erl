@@ -23,6 +23,8 @@
 
 -export([init/1]).
 
+-include_lib("kernel/include/logger.hrl").
+
 -spec start_link() -> {ok, pid()}.
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
@@ -30,7 +32,7 @@ start_link() ->
 -spec start_child(Node :: node(), GrainRef :: erleans:grain_ref())
                  -> {ok, pid() | undefined} | {error, supervisor:startchild_err()}.
 start_child(Node, GrainRef) ->
-    lager:info("node=~p grain=~p", [Node, GrainRef]),
+    ?LOG_INFO("node=~p grain=~p", [Node, GrainRef]),
     supervisor:start_child({?MODULE, Node}, [GrainRef]).
 
 init([]) ->

@@ -28,6 +28,7 @@
 
 -include("erleans.hrl").
 -include_lib("lasp_pg/include/lasp_pg.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -dialyzer({nowarn_function, register_name/2}).
 -dialyzer({nowarn_function, unregister_name/2}).
@@ -52,7 +53,7 @@ deactivate_dups(Name, AwSet) ->
     Set = state_awset:query(AwSet),
     Size = sets:size(Set),
     Keep = rand:uniform(Size),
-    lager:info("at=deactivate_dups name=~p size=~p keep=~p", [Name, Size, Keep]),
+    ?LOG_INFO("at=deactivate_dups name=~p size=~p keep=~p", [Name, Size, Keep]),
     sets:fold(fun(_, N) when N =:= Size ->
                   N+1;
                  (Pid, N) ->

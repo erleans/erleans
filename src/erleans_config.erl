@@ -24,6 +24,8 @@
          get/2,
          provider/1]).
 
+-include_lib("kernel/include/logger.hrl").
+
 -spec get(atom()) -> any().
 get(Key) ->
     {ok, Value} = application:get_env(erleans, Key),
@@ -41,7 +43,7 @@ provider(Grain) ->
                 {ok, Provider} ->
                     Provider;
                 _ ->
-                    lager:error("error=no_default_provider"),
+                    ?LOG_ERROR("error=no_default_provider"),
                     erlang:error(no_default_provider)
             end;
         Provider ->
