@@ -19,6 +19,7 @@
 -behaviour(supervisor).
 
 -export([start_link/0,
+         start_child/1,
          start_child/2]).
 
 -export([init/1]).
@@ -28,6 +29,12 @@
 -spec start_link() -> {ok, pid()}.
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+
+-spec start_child(GrainRef :: erleans:grain_ref())
+                 -> {ok, pid() | undefined} | {error, supervisor:startchild_err()}.
+start_child(GrainRef) ->
+    ?LOG_INFO("local_grain=~p", [GrainRef]),
+    supervisor:start_child(?MODULE, [GrainRef]).
 
 -spec start_child(Node :: node(), GrainRef :: erleans:grain_ref())
                  -> {ok, pid() | undefined} | {error, supervisor:startchild_err()}.

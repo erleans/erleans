@@ -12,10 +12,8 @@
 %%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %%% See the License for the specific language governing permissions and
 %%% limitations under the License.
-%%%-----------------------------------------------------------------
-
-%%%-------------------------------------------------------------------
-%% @doc erleans public API
+%%%
+%% @doc
 %% @end
 %%%-------------------------------------------------------------------
 
@@ -42,15 +40,13 @@ stop(_State) ->
 init_providers() ->
     Providers = erleans_config:get(providers, []),
     maps:map(fun(ProviderName, Config) ->
-                    case init_provider(ProviderName, Config) of
-                        %% handle crash here so application stops
-                        {ok, _} ->
-                            ok;
-                        {error, Reason} ->
-                            ?LOG_ERROR("failed to initialize provider ~s: reason=~p", [ProviderName, Reason]),
-                            ok
-                    end
-                end, Providers).
-
-init_provider(Name, Opts) ->
-    erleans_provider_sup:start_child(Name, Opts).
+                     %% start provider as child of erleans_provider_sup
+                     case erleans_provider_sup:start_child(ProviderName, Config) of
+                         %% handle crash here so application stops with good error message?
+                         {ok, _} ->
+                             ok;
+                         {error, Reason} ->
+                             ?LOG_ERROR("failed to initialize provider ~s: reason=~p", [ProviderName, Reason]),
+                             ok
+                     end
+             end, Providers).

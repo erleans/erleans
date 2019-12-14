@@ -35,7 +35,7 @@
 %%% ---------------------------------------------------------------------------
 -module(erleans_timer).
 
--include("include/erleans_timer.hrl").
+-include("erleans_timer.hrl").
 
 -export([start/3,
          start/4,

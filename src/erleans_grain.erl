@@ -195,11 +195,11 @@ activate_grain(GrainRef=#{placement := Placement}) ->
 
 %% Stateless are always activated on the local node if <N exist already on the node
 activate_stateless(GrainRef, _N) ->
-    erleans_grain_sup:start_child(node(), GrainRef).
+    erleans_grain_sup:start_child(GrainRef).
 
 %% Activate on the local node
 activate_local(GrainRef) ->
-    erleans_grain_sup:start_child(node(), GrainRef).
+    erleans_grain_sup:start_child(GrainRef).
 
 %% Activate the grain on a random node in the cluster
 activate_random(GrainRef) ->

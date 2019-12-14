@@ -1,3 +1,4 @@
+deps
 .rebar3
 _*
 .eunit
@@ -15,3 +16,4 @@ logs
 _build
 .idea
 rebar3.crashdump
+doc
