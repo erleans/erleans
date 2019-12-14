@@ -28,7 +28,6 @@ init_per_suite(Config) ->
     %% lower gossip interval of partisan membership so it triggers more often in tests
     application:set_env(partisan, gossip_interval, 100),
     application:load(lasp),
-    application:ensure_all_started(lager),
     application:ensure_all_started(pgo),
     {ok, _} = application:ensure_all_started(erleans),
     start_nodes(),
@@ -51,27 +50,24 @@ start_nodes() ->
 start_nodes([], Acc) ->
     Acc;
 start_nodes([{Node, PeerPort} | T], Acc) ->
+    CodePath = code:get_path(),
+    Paths = lists:flatten([["-pa ", Path, " "] || Path <- CodePath]),
     ErlFlags = case application:get_env(erleans, default_provider, ets) of
                    ets ->
-                       "-config ../../../../test/sys.config";
+                       "-config ../../../../test/sys.config " ++ Paths;
                    postgres ->
-                       "-config ../../../../test/db_sys.config"
+                       "-config ../../../../test/db_sys.config" ++ Paths
                end,
-    CodePath = code:get_path(),
     {ok, HostNode} = ct_slave:start(Node,
                                     [{kill_if_fail, true},
                                      {monitor_master, true},
                                      {init_timeout, 3000},
                                      {startup_timeout, 3000},
                                      {startup_functions,
-                                      [{code, set_path, [CodePath]},
-                                       {application, load, [lager]},
-                                       {application, set_env,
-                                        [lager, handlers,
-                                         [{lager_console_backend, [{level, debug}]},
-                                          {lager_file_backend,
-                                           [{file, "log/ct_console.log"}, {level, debug}]}]]},
-                                       {application, ensure_all_started, [lager]},
+                                      [{logger, set_handler_config, [default, config,
+                                                                     #{file => "log/ct_console.log"}]},
+                                       {logger, set_handler_config, [default, formatter,
+                                                                     {logger_formatter, #{}}]},
                                        {application, load, [partisan]},
                                        {application, load, [vonnegut]},
                                        {application, set_env,
@@ -87,7 +83,7 @@ start_nodes([{Node, PeerPort} | T], Acc) ->
     timer:sleep(1000),
 
     ct:print("\e[32m Node ~p [OK] \e[0m", [HostNode]),
-    net_kernel:connect_node(?NODE_A),
+    true = net_kernel:connect_node(?NODE_A),
     rpc:call(?NODE_A, partisan_peer_service, join, [#{name => ?NODE_CT,
                                                       listen_addrs => [#{ip => {127,0,0,1}, port => 10200}],
                                                       parallelism => 1}]),

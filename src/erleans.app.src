@@ -6,7 +6,6 @@
   {applications,
    [kernel,
     stdlib,
-    lager,
     sasl,
     uuid,
     lasp,
@@ -16,16 +15,14 @@
     jch,
     eql,
     erlware_commons,
-    pgo,
-    vonnegut,
-    opencensus
+    opentelemetry_api,
+    pgo
    ]},
   {modules, []},
   {env, [{deactivate_after, 2700000}, %% 45 minutes
          {refresh_interval, 5000},
          {num_partitions, 128}]},
 
-  {maintainers, ["Tristan Sloughter", "Bryan Hughes", "Evan Vigil-McClanahan", "Andrew Varner"]},
   {licenses, ["Apache 2"]},
   {links, [{"GitHub", "https://github.com/erleans/erleans"}]}
  ]}.

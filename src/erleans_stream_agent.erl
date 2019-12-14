@@ -32,6 +32,7 @@
          terminate/2]).
 
 -include("erleans.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 start_link() ->
     gen_server:start_link(?MODULE, [], []).
@@ -49,8 +50,8 @@ handle_cast(_, State) ->
 handle_info( {_, {go, _Ref, {Stream=#{stream_module   := StreamModule,
                                       topic           := Topic}, SubRef, Subscribers, Offset},
                   _RelativeTime, _SojournTime}}, State) ->
-    lager:info("at=fetch_start topic=~p stream_mod=~p offset=~p",
-               [Topic, StreamModule, Offset]),
+    ?LOG_INFO("at=fetch_start topic=~p stream_mod=~p offset=~p",
+              [Topic, StreamModule, Offset]),
     case StreamModule:fetch([{Topic, Offset}]) of
         %% I'm not sure this is a good idea, but eases races?
         [{error, {Topic, not_found}}] ->

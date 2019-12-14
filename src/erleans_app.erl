@@ -26,6 +26,8 @@
 -export([start/2,
          stop/1]).
 
+-include_lib("kernel/include/logger.hrl").
+
 start(_StartType, _StartArgs) ->
     Specs = init_providers(),
     {ok, Pid} = erleans_sup:start_link(Specs),
@@ -53,7 +55,7 @@ init_providers() ->
                         {ok, ChildSpec} ->
                             [ChildSpec | Acc];
                         {error, Reason} ->
-                            lager:error("failed to initialize provider ~s: reason=~p", [ProviderName, Reason]),
+                            ?LOG_ERROR("failed to initialize provider ~s: reason=~p", [ProviderName, Reason]),
                             Acc
                     end
                 end, [], Providers).

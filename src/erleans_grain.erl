@@ -48,6 +48,7 @@
          code_change/4]).
 
 -include("erleans.hrl").
+-include_lib("kernel/include/logger.hrl").
 
 -define(DEFAULT_TIMEOUT, 5000).
 -define(NO_PROVIDER_ERROR, no_provider_configured).
@@ -139,10 +140,10 @@ call(GrainRef, Request, Timeout) ->
     ReqType = req_type(),
     do_for_ref(GrainRef, fun(_, Pid) ->
                              try
-                                 gen_statem:call(Pid, {ocp:current_span_ctx(), ReqType, Request}, Timeout)
+                                 gen_statem:call(Pid, {otel:current_span_ctx(), ReqType, Request}, Timeout)
                              catch
                                  exit:{bad_etag, _} ->
-                                     lager:error("at=grain_exit reason=bad_etag", []),
+                                     ?LOG_ERROR("at=grain_exit reason=bad_etag", []),
                                      {exit, saved_etag_changed}
                              end
                          end).
@@ -150,7 +151,7 @@ call(GrainRef, Request, Timeout) ->
 -spec cast(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 cast(GrainRef, Request) ->
     ReqType = req_type(),
-    do_for_ref(GrainRef, fun(_, Pid) -> gen_statem:cast(Pid, {ocp:current_span_ctx(), ReqType, Request}) end).
+    do_for_ref(GrainRef, fun(_, Pid) -> gen_statem:cast(Pid, {otel:current_span_ctx(), ReqType, Request}) end).
 
 req_type() ->
     case get(req_type) of
@@ -175,7 +176,7 @@ do_for_ref(GrainRef, Fun) ->
             Pid when is_pid(Pid) ->
                 Fun(noname, Pid);
             undefined ->
-                lager:info("start=~p", [GrainRef]),
+                ?LOG_INFO("start=~p", [GrainRef]),
                 case activate_grain(GrainRef) of
                     {ok, undefined} ->
                         %% the only way the Pid could be `undefined`
@@ -322,28 +323,26 @@ active({call, From}, {undefined, ReqType, Msg}, Data=#data{cb_module=CbModule,
                                                            deactivate_after=DeactivateAfter}) ->
     handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter));
 active({call, From}, {SpanCtx, ReqType, Msg}, Data=#data{cb_module=CbModule,
-                                                              cb_state=CbData,
-                                                              deactivate_after=DeactivateAfter}) ->
-    ocp:with_span_ctx(SpanCtx),
-    ocp:with_child_span(span_name(Msg)),
-    ocp:put_attribute(<<"grain_msg">>, io_lib:format("~p", [Msg])),
+                                                         cb_state=CbData,
+                                                         deactivate_after=DeactivateAfter}) ->
+    otel:start_span(span_name(Msg), #{parent => SpanCtx}),
+    otel:set_attribute(<<"grain_msg">>, io_lib:format("~p", [Msg])),
     try handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter))
     after
-        ocp:finish_span()
+        otel:end_span()
     end;
 active(cast, {undefined, ReqType, Msg}, Data=#data{cb_module=CbModule,
                                                    cb_state=CbData,
                                                    deactivate_after=DeactivateAfter}) ->
     handle_result(CbModule:handle_cast(Msg, CbData), Data, upd_timer(ReqType, DeactivateAfter));
 active(cast, {SpanCtx, ReqType, Msg}, Data=#data{cb_module=CbModule,
-                                                      cb_state=CbData,
-                                                      deactivate_after=DeactivateAfter}) ->
-    ocp:with_span_ctx(SpanCtx),
-    ocp:with_child_span(span_name(Msg)),
-    ocp:put_attribute(<<"grain_msg">>, io_lib:format("~p", [Msg])),
+                                                 cb_state=CbData,
+                                                 deactivate_after=DeactivateAfter}) ->
+    otel:start_span(span_name(Msg), #{parent => SpanCtx}),
+    otel:set_attribute(<<"grain_msg">>, io_lib:format("~p", [Msg])),
     try handle_result(CbModule:handle_cast(Msg, CbData), Data, upd_timer(ReqType, DeactivateAfter))
     after
-        ocp:finish_span()
+        otel:end_span()
     end;
 active(state_timeout, activation_expiry, Data) ->
     {next_state, deactivating, Data};
@@ -394,13 +393,13 @@ terminate(?NO_PROVIDER_ERROR, _State, #data{cb_module=CbModule,
                                             id=Id,
                                             ref=GrainRef}) ->
     maybe_remove_worker(GrainRef),
-    lager:error("attempted to save without storage provider configured: id=~p cb_module=~p", [Id, CbModule]),
+    ?LOG_ERROR("attempted to save without storage provider configured: id=~p cb_module=~p", [Id, CbModule]),
     %% We do not want to call the deactivate callback here because this
     %% is not a deactivation, it is a hard crash.
     ok;
 terminate(Reason, _State, Data=#data{ref=GrainRef}) ->
     maybe_remove_worker(GrainRef),
-    lager:info("at=terminate reason=~p", [Reason]),
+    ?LOG_INFO("at=terminate reason=~p", [Reason]),
     %% supervisor is terminating, node is probably shutting down.
     %% deactivate the grain so it can clean up and save if needed
     _ = finalize_and_stop(Data),

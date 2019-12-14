@@ -39,6 +39,8 @@
          terminate/2,
          code_change/3]).
 
+-include_lib("kernel/include/logger.hrl").
+
 %% can remove these when bug in sbroker specs is fixed
 -dialyzer({nowarn_function, handle_down_agent/3}).
 -dialyzer({nowarn_function, enqueue_streams/2}).
@@ -101,7 +103,7 @@ handle_call({next, StreamRef, SubRef, NewSequenceToken}, _From={FromPid, _Tag},
             State=#state{monitors=Monitors,
                          provider=Provider,
                          streams=Streams}) ->
-    lager:info("at=next stream_ref=~p sequence_token=~p",
+    ?LOG_INFO("at=next stream_ref=~p sequence_token=~p",
                [StreamRef, NewSequenceToken]),
     case maps:get(StreamRef, Streams, undefined) of
         undefined ->
@@ -145,7 +147,7 @@ handle_call({next, StreamRef, SubRef, NewSequenceToken}, _From={FromPid, _Tag},
     end;
 handle_call({subscribe, StreamRef, Partition, Grain, SequenceToken}, _From,
             State=#state{streams=Streams, provider=Provider}) ->
-    lager:info("at=subscribe stream_ref=~p grain_ref=~p", [StreamRef, Grain]),
+    ?LOG_INFO("at=subscribe stream_ref=~p grain_ref=~p", [StreamRef, Grain]),
     %% note that we don't care about existing streams here on
     %% subscribe!  anything else with the same sequence token could be
     %% getting fetched elsewhere concurrently, so we need to add our
@@ -173,7 +175,7 @@ handle_call({subscribe, StreamRef, Partition, Grain, SequenceToken}, _From,
     {reply, ok, State#state{streams=Streams1}};
 handle_call({unsubscribe, StreamRef, Grain}, _From, State=#state{streams=Streams,
                                                                  provider=Provider}) ->
-    lager:info("at=unsubscribe stream_ref=~p grain_ref=~p", [StreamRef, Grain]),
+    ?LOG_INFO("at=unsubscribe stream_ref=~p grain_ref=~p", [StreamRef, Grain]),
     case maps:get(StreamRef, Streams, undefined) of
         undefined ->
             %% no longer our responsibility?
@@ -240,7 +242,7 @@ handle_info({_Stream, {drop, _SojournTime}}, State) ->
     %% should never happen... we have an infinite timeout
     {noreply, State};
 handle_info({update_streams, Range}, State=#state{provider=Provider}) ->
-    lager:info("at=update_streams", []),
+    ?LOG_INFO("at=update_streams", []),
     %sbroker:dirty_cancel(?STREAM_BROKER, ?STREAM_TAG),
     MyStreams = enqueue_streams(Provider, Range),
     {noreply, State#state{streams = MyStreams}};
@@ -294,7 +296,7 @@ enqueue_streams({ProviderModule, Provider}, {Start, Stop}) ->
 
 handle_down_agent(MonitorRef, Monitors, Streams) ->
     {{Stream, SubRef}, Monitors1} = maps:take(MonitorRef, Monitors),
-    lager:info("at=DOWN stream_ref=~p", [{Stream, SubRef}]),
+    ?LOG_INFO("at=DOWN stream_ref=~p", [{Stream, SubRef}]),
     SubStreams = maps:get(Stream, Streams),
     {_, #substream{seq_token = SeqToken, grains = Subscribers}}
         = lists:keyfind(SubRef, 1, SubStreams),
