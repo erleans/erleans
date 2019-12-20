@@ -1,5 +1,5 @@
 %%%----------------------------------------------------------------------------
-%%% Copyright Space-Time Insight 2017. All Rights Reserved.
+%%% Copyright Tristan Sloughter 2019. All Rights Reserved.
 %%%
 %%% Licensed under the Apache License, Version 2.0 (the "License");
 %%% you may not use this file except in compliance with the License.
@@ -34,10 +34,7 @@
 -export([start_link/1,
          call/2,
          call/3,
-         cast/2,
-         subscribe/2,
-         subscribe/3,
-         unsubscribe/2]).
+         cast/2]).
 
 -export([init/1,
          init/2,
@@ -114,22 +111,6 @@
 -spec start_link(GrainRef :: erleans:grain_ref()) -> {ok, pid() | undefined} | {error, any()}.
 start_link(GrainRef) ->
     proc_lib:start_link(?MODULE, init, [self(), GrainRef]).
-
-subscribe(StreamProvider, Topic) ->
-    %% 0 is going to be the most common initial token, but subscribe/3
-    %% allows the token to be overridden when it is not 0, or not an
-    %% integer.
-    subscribe(StreamProvider, Topic, 0).
-
-subscribe(StreamProvider, Topic, SequenceToken) ->
-    StreamRef = erleans:get_stream(StreamProvider, Topic),
-    MyGrain = get(grain_ref),
-    erleans_stream_manager:subscribe(StreamRef, MyGrain, SequenceToken).
-
-unsubscribe(StreamProvider, Topic) ->
-    StreamRef = erleans:get_stream(StreamProvider, Topic),
-    MyGrain = get(grain_ref),
-    erleans_stream_manager:unsubscribe(StreamRef, MyGrain).
 
 -spec call(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 call(GrainRef, Request) ->

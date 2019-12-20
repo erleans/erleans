@@ -1,10 +1,9 @@
-erleans
+Erleans
 =====
 
-[![CircleCI](https://circleci.com/gh/erleans/erleans.svg?style=svg)](https://circleci.com/gh/erleans/erleans)
+[![CircleCI](https://circleci.com/gh/erleans/erleans.svg?style=svg)](https://circleci.com/gh/erleans/erleans)[![codecov](https://codecov.io/gh/erleans/erleans/branch/master/graph/badge.svg)](https://codecov.io/gh/erleans/erleans)
 
-[![codecov](https://codecov.io/gh/erleans/erleans/branch/master/graph/badge.svg)](https://codecov.io/gh/erleans/erleans)
-
+Erleans is a framework for building distributed applications in Erlang and Elixir based on [Microsoft Orleans](https://dotnet.github.io/orleans/).
 
 ## Components
 
@@ -34,13 +33,7 @@ Processes can subscribe to grains to receive notifications for grain specific ev
 
 Interface that must be implemented for any persistent store to be used for grains.
 
-Streams have a provider type as well for providing a pluggable stream layer.
-
-### Streams
-
-Grains can subscribe to streams and implement callbacks for handling records as they are published. Each erleans node runs a configurable number of stream agents which are responsible for the actual fetching off a stream and forwarding to the subscribed grains. Stream providers implement how to read from and publish to a given stream backend. On arrival of new events on the stream the agents makes a call to each subscriber with the new event, thus blocking for as long as the slowest subscriber takes to handle the event, before fetching any new events.
-
-A grain must explicitly unsubscribe from a stream or it will continue to receive calls even after being deactivated. This is because subscriptions are based on the grain reference, not the activation, so if a subscribed grain has deactivated it will be reactivated on the next event on the stream.
+[Streams](https://github.com/erleans/erleans_streams) have a provider type as well for providing a pluggable stream layer.
 
 ## Differences from gen_server
 
@@ -68,7 +61,7 @@ placement() ->
     prefer_local.
 
 provider() ->
-    ets_provider.
+    in_memory.
 
 deactivated_counter(Ref) ->
     erleans_grain:call(Ref, deactivated_counter).

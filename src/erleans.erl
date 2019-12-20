@@ -1,5 +1,5 @@
 %%%--------------------------------------------------------------------
-%%% Copyright Space-Time Insight 2017. All Rights Reserved.
+%%% Copyright Tristan Sloughter 2019. All Rights Reserved.
 %%%
 %%% Licensed under the Apache License, Version 2.0 (the "License");
 %%% you may not use this file except in compliance with the License.
@@ -20,9 +20,7 @@
 %%% ---------------------------------------------------------------------------
 -module(erleans).
 
--export([get_grain/2,
-         get_stream/2,
-         get_stream/3]).
+-export([get_grain/2]).
 
 -include("erleans.hrl").
 
@@ -33,17 +31,11 @@
                        placement           := placement(),
                        provider            => provider() | undefined}.
 
--type stream_ref() :: #{topic           := term(),
-                        stream_module   := module(),
-                        stream_provider := atom(),
-                        fetch_interval  := integer()}.
-
 -type placement() :: random | prefer_local | stateless | {stateless, integer()} | system_grain. %% | load
 
 -type etag() :: integer().
 
 -export_type([grain_ref/0,
-              stream_ref/0,
               placement/0,
               provider/0,
               etag/0]).
@@ -60,19 +52,6 @@ get_grain(ImplementingModule, Id) ->
         _ ->
             BaseGrainRef#{provider => provider(ImplementingModule)}
     end.
-
--spec get_stream(module(), term()) -> stream_ref().
-get_stream(StreamProvider, Topic) ->
-    get_stream(StreamProvider, Topic, ?INITIAL_FETCH_INTERVAL).
-
--spec get_stream(module(), term(), pos_integer()) -> stream_ref().
-get_stream(StreamProvider, Topic, FetchInterval) ->
-    StreamConfig = proplists:get_value(StreamProvider, erleans_config:get(stream_providers, [])),
-    StreamModule = proplists:get_value(module, StreamConfig),
-    #{topic => Topic,
-      stream_module => StreamModule,
-      stream_provider => StreamProvider,
-      fetch_interval => FetchInterval}.
 
 -spec provider(module()) -> provider().
 provider(CbModule) ->
@@ -93,11 +72,12 @@ find_provider_config(default) ->
             find_provider_config(erleans_config:get(default_provider))
     end;
 find_provider_config(Name) ->
-    case proplists:get_value(Name, erleans_config:get(providers, [])) of
-        undefined ->
+    case maps:find(Name, erleans_config:get(providers, #{})) of
+        error ->
             throw({missing_provider_config, Name});
-        ProviderOptions ->
-            Module = proplists:get_value(module, ProviderOptions),
+        {ok, ProviderOptions} ->
+            %% TODO: handle missing module and log error
+            Module = maps:get(module, ProviderOptions),
             {Module, Name}
     end.
 

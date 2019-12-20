@@ -21,7 +21,6 @@ all() ->
 init_per_suite(Config) ->
     application:ensure_all_started(pgo),
     application:load(erleans),
-    application:unset_env(erleans, stream_providers),
     {ok, _} = application:ensure_all_started(erleans),
     Config.
 

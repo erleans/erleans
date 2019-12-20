@@ -1,5 +1,5 @@
 %%%----------------------------------------------------------------------------
-%%% Copyright Space-Time Insight 2017. All Rights Reserved.
+%%% Copyright Tristan Sloughter 2019. All Rights Reserved.
 %%%
 %%% Licensed under the Apache License, Version 2.0 (the "License");
 %%% you may not use this file except in compliance with the License.
@@ -23,29 +23,26 @@
 
 -behaviour(supervisor).
 
--export([start_link/1,
-         start_partitions_sup/0]).
+-export([start_link/0]).
 
 -export([init/1]).
 
 -define(SERVER, ?MODULE).
 
--spec start_link(list()) -> {ok, pid()}.
-start_link(ProviderSpecs) ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, [ProviderSpecs]).
+-spec start_link() -> {ok, pid()}.
+start_link() ->
+    supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
-start_partitions_sup() ->
-    supervisor:start_child(?SERVER, #{id => erleans_partitions_sup,
-                                      start => {erleans_partitions_sup, start_link, []},
-                                      restart => permanent,
-                                      type => supervisor,
-                                      shutdown => 5000}).
-
-init([ProviderSpecs]) ->
+init([]) ->
     SupFlags = #{strategy => one_for_one,
-                 intensity => 0,
-                 period => 1},
-    ChildSpecs = [#{id => erleans_grain_sup,
+                 intensity => 5,
+                 period => 10},
+    ChildSpecs = [#{id => erleans_provider_sup,
+                    start => {erleans_provider_sup, start_link, []},
+                    restart => permanent,
+                    type => supervisor,
+                    shutdown => 5000},
+                  #{id => erleans_grain_sup,
                     start => {erleans_grain_sup, start_link, []},
                     restart => permanent,
                     type => supervisor,
@@ -54,7 +51,7 @@ init([ProviderSpecs]) ->
                     start => {erleans_discovery, start_link, []},
                     restart => permanent,
                     type => worker,
-                    shutdown => 5000} | ProviderSpecs],
+                    shutdown => 5000}],
     {ok, {SupFlags, ChildSpecs}}.
 
 %%====================================================================

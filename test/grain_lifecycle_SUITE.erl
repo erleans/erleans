@@ -20,7 +20,6 @@ all() ->
      local_activations].
 
 init_per_suite(Config) ->
-    application:ensure_all_started(pgo),
     application:load(erleans),
     %% set a really low lease time for testing deactivations
     application:set_env(erleans, deactivate_after, 1),
@@ -29,7 +28,6 @@ init_per_suite(Config) ->
 
 end_per_suite(_Config) ->
     application:stop(erleans),
-    application:stop(pgo),
     ok.
 
 init_per_testcase(_, Config) ->

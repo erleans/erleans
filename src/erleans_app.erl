@@ -1,5 +1,5 @@
 %%%--------------------------------------------------------------------
-%%% Copyright Space-Time Insight 2017. All Rights Reserved.
+%%% Copyright Tristan Sloughter 2019. All Rights Reserved.
 %%%
 %%% Licensed under the Apache License, Version 2.0 (the "License");
 %%% you may not use this file except in compliance with the License.
@@ -29,14 +29,8 @@
 -include_lib("kernel/include/logger.hrl").
 
 start(_StartType, _StartArgs) ->
-    Specs = init_providers(),
-    {ok, Pid} = erleans_sup:start_link(Specs),
-    post_init_providers(),
-
-    %% streams manager needs the providers fully initialized first
-    %% so we have to do it after post_init_providers
-    erleans_sup:start_partitions_sup(),
-
+    {ok, Pid} = erleans_sup:start_link(),
+    init_providers(),
     {ok, Pid}.
 
 stop(_State) ->
@@ -46,27 +40,17 @@ stop(_State) ->
 %% Internal functions
 
 init_providers() ->
-    Providers = erleans_config:get(providers, []) ++
-        erleans_config:get(stream_providers, []),
-    lists:foldl(fun({ProviderName, Args}, Acc) ->
-                    case init_provider(ProviderName, Args) of
-                        ok ->
-                            Acc;
-                        {ok, ChildSpec} ->
-                            [ChildSpec | Acc];
+    Providers = erleans_config:get(providers, []),
+    maps:map(fun(ProviderName, Config) ->
+                    case init_provider(ProviderName, Config) of
+                        %% handle crash here so application stops
+                        {ok, _} ->
+                            ok;
                         {error, Reason} ->
                             ?LOG_ERROR("failed to initialize provider ~s: reason=~p", [ProviderName, Reason]),
-                            Acc
+                            ok
                     end
-                end, [], Providers).
+                end, Providers).
 
-init_provider(ProviderName, Config) ->
-    Module = proplists:get_value(module, Config),
-    Module:init(ProviderName, Config).
-
-post_init_providers() ->
-    Providers = erleans_config:get(providers, []),
-    lists:foreach(fun({ProviderName, Config}) ->
-                      Module = proplists:get_value(module, Config),
-                      Module:post_init(ProviderName, Config)
-                  end, Providers).
+init_provider(Name, Opts) ->
+    erleans_provider_sup:start_child(Name, Opts).

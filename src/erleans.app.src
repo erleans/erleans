@@ -12,11 +12,8 @@
     lasp_pg,
     gproc,
     sbroker,
-    jch,
-    eql,
     erlware_commons,
-    opentelemetry_api,
-    pgo
+    opentelemetry_api
    ]},
   {modules, []},
   {env, [{deactivate_after, 2700000}, %% 45 minutes

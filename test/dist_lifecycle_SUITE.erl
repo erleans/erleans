@@ -18,7 +18,7 @@
 -define(NODE_A, 'a@127.0.0.1').
 
 all() ->
-    [manual_start_stop, simple_subscribe].
+    [manual_start_stop].
 
 init_per_suite(Config) ->
     application:load(partisan),
@@ -52,12 +52,7 @@ start_nodes([], Acc) ->
 start_nodes([{Node, PeerPort} | T], Acc) ->
     CodePath = code:get_path(),
     Paths = lists:flatten([["-pa ", Path, " "] || Path <- CodePath]),
-    ErlFlags = case application:get_env(erleans, default_provider, ets) of
-                   ets ->
-                       "-config ../../../../test/sys.config " ++ Paths;
-                   postgres ->
-                       "-config ../../../../test/db_sys.config" ++ Paths
-               end,
+    ErlFlags = "-config ../../../../test/sys.config " ++ Paths,
     {ok, HostNode} = ct_slave:start(Node,
                                     [{kill_if_fail, true},
                                      {monitor_master, true},
@@ -116,11 +111,3 @@ manual_start_stop(_Config) ->
 
     ok.
 
-simple_subscribe(_Config) ->
-    Grain1 = erleans:get_grain(stream_test_grain, <<"dist-simple-subscribe-grain1">>),
-    Topic = <<"dist-simple-topic">>,
-    stream_test_grain:subscribe(Grain1, Topic),
-    RcrdList = lists:duplicate(5 + rand:uniform(100), <<"repeated simple record">>),
-    erleans_test_utils:produce(Topic, RcrdList),
-    ?UNTIL(stream_test_grain:records_read(Grain1) >= 3),
-    ok.

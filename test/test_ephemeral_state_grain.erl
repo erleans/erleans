@@ -31,7 +31,7 @@ placement() ->
     prefer_local.
 
 provider() ->
-    ets.
+    in_memory.
 
 deactivated_counter(Ref) ->
     erleans_grain:call(Ref, deactivated_counter).

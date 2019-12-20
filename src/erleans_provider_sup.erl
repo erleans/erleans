@@ -12,35 +12,27 @@
 %%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %%% See the License for the specific language governing permissions and
 %%% limitations under the License.
-%%%----------------------------------------------------------------------------
-
--module(erleans_grain_sup).
-
--behaviour(supervisor).
+%%%
+%%% @doc
+%%% @end
+%%% ---------------------------------------------------------------------------
+-module(erleans_provider_sup).
 
 -export([start_link/0,
-         start_child/2]).
+         start_child/2,
+         init/1]).
 
--export([init/1]).
-
--include_lib("kernel/include/logger.hrl").
-
--spec start_link() -> {ok, pid()}.
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
--spec start_child(Node :: node(), GrainRef :: erleans:grain_ref())
-                 -> {ok, pid() | undefined} | {error, supervisor:startchild_err()}.
-start_child(Node, GrainRef) ->
-    ?LOG_INFO("node=~p grain=~p", [Node, GrainRef]),
-    supervisor:start_child({?MODULE, Node}, [GrainRef]).
+start_child(Name, ProviderOpts) ->
+    supervisor:start_child(?MODULE, [Name, ProviderOpts]).
 
-init([]) ->
+init(_Args) ->
     SupFlags = #{strategy => simple_one_for_one,
                  intensity => 5,
                  period => 10},
-    ChildSpecs = [#{id => erleans_grain,
-                    start => {erleans_grain, start_link, []},
-                    restart => temporary,
-                    shutdown => 5000}],
+    ChildSpecs = [#{id => erleans_provider,
+                    start => {erleans_provider, start_link, []},
+                    shutdown => 3000}],
     {ok, {SupFlags, ChildSpecs}}.

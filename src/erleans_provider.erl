@@ -1,5 +1,5 @@
 %%%----------------------------------------------------------------------------
-%%% Copyright Space-Time Insight 2017. All Rights Reserved.
+%%% Copyright Tristan Sloughter 2019. All Rights Reserved.
 %%%
 %%% Licensed under the Apache License, Version 2.0 (the "License");
 %%% you may not use this file except in compliance with the License.
@@ -12,17 +12,15 @@
 %%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %%% See the License for the specific language governing permissions and
 %%% limitations under the License.
-%%%----------------------------------------------------------------------------
-
-%%% ---------------------------------------------------------------------------
+%%%
 %%% @doc
 %%% @end
 %%% ---------------------------------------------------------------------------
 -module(erleans_provider).
 
--callback init(ProviderName :: atom(), Args :: list()) -> ok | {ok, supervisor:child_spec()}.
+-export([start_link/2]).
 
--callback post_init(ProviderName :: atom(), Args :: list()) -> ok.
+-callback start_link(ProviderName :: atom(), Args :: list()) -> {ok, pid()}.
 
 -callback all(Type :: module(), ProviderName :: atom()) -> {ok, [any()]} | {error, any()}.
 
@@ -50,3 +48,7 @@
     ok |
     {error, {bad_etag, erleans:etag(), erleans:etag()}} |
     {error, not_found}.
+
+start_link(Name, #{module := Module,
+                   args := Args}) ->
+    Module:start_link(Name, Args).
