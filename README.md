@@ -5,6 +5,16 @@ Erleans
 
 Erleans is a framework for building distributed applications in Erlang and Elixir based on [Microsoft Orleans](https://dotnet.github.io/orleans/).
 
+## Requirements
+
+Rebar3 3.13.0 or above or Elixir 1.9+. Easiest way to get the latest Rebar3:
+
+``` shell
+$ rebar3 local upgrade
+...
+$ export PATH=~/.cache/rebar3/bin:$PATH
+```
+
 ## Components
 
 ### Grains
