@@ -56,7 +56,7 @@ No starting or linking, a grain is activated when it is sent a request if an act
 * `stateless`: Stateless grains are always local. If no local activation to the request exists one is created up to a default maximum value.
 * `{stateless, Max :: integer()}`: Allows for up to `Max` number of activations for a grain to exist per node. A new activation, up until `Max` exist on the node, will be created for a request if an existing activation is not currently busy.
 
-### Example
+### Erlang Example
 
 The grain implementation `test_grain` is found in `test/`:
 
@@ -96,6 +96,49 @@ $ rebar3 as test shell
 > Grain1 = erleans:get_grain(test_grain, <<"grain1">>).
 > test_grain:activated_counter(Grain1).
 {ok, 1}
+```
+
+## Elixir Example
+
+``` elixir
+defmodule ErleansElixirExample do
+  use Erleans.Grain,
+    placement: :prefer_local,
+    provider: :postgres,
+    state: %{:counter => 0}
+
+  def get(ref) do
+    :erleans_grain.call(ref, :get)
+  end
+
+  def increment(ref) do
+    :erleans_grain.cast(ref, :increment)
+  end
+
+  def handle_call(:get, from, state = %{:counter => counter}) do
+    {:ok, state, [{:reply, from, counter}]}
+  end
+
+  def handle_cast(:increment, state = %{:counter => counter}) do
+    new_state = %{state | :counter => counter + 1}
+    {:ok, new_state, [:save_state]}
+  end
+end
+```
+
+``` elixir
+$ mix deps.get
+$ mix compile
+$ iex --sname a@localhost -S mix
+
+iex(a@localhost)1> ref = Erleans.get_grain(ErleansElixirExample, "somename")
+...
+iex(a@localhost)2> ErleansElixirExample.get(ref)
+0
+iex(a@localhost)3> ErleansElixirExample.increment(ref)
+:ok
+iex(a@localhost)4> ErleansElixirExample.get(ref)
+1
 ```
 
 ## Failure Semantics
