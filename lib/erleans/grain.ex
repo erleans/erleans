@@ -36,6 +36,7 @@ defmodule Erleans.Grain do
         @erleans_grain_state
       end
 
+      defoverridable provider: 0
       defoverridable state: 1
     end
   end
