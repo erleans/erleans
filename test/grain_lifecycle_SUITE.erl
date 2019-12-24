@@ -15,19 +15,42 @@
 -include("test_utils.hrl").
 
 all() ->
-    [manual_start_stop, bad_etag_save, ephemeral_state,
-     no_provider_grain, request_types, exit_notfound,
-     local_activations].
+    [{group, deactivate_after_1},
+     {group, deactivate_after_30},
+     {group, deactivate_after_60},
+     {group, deactivate_after_50000}].
+
+groups() ->
+    [{deactivate_after_1, [], [manual_start_stop, ephemeral_state,
+                               no_provider_grain, exit_notfound]},
+     {deactivate_after_60, [], [bad_etag_save]},
+     {deactivate_after_30, [], [request_types]},
+     {deactivate_after_50000, [], [local_activations]}].
 
 init_per_suite(Config) ->
-    application:load(erleans),
-    %% set a really low lease time for testing deactivations
-    application:set_env(erleans, deactivate_after, 1),
-    {ok, _} = application:ensure_all_started(erleans),
     Config.
 
 end_per_suite(_Config) ->
+    ok.
+
+init_per_group(deactivate_after_1, Config) ->
+    init_per_group_(1, Config);
+init_per_group(deactivate_after_30, Config) ->
+    init_per_group_(30, Config);
+init_per_group(deactivate_after_60, Config) ->
+    init_per_group_(60, Config);
+init_per_group(deactivate_after_50000, Config) ->
+    init_per_group_(50000, Config).
+
+init_per_group_(DeactivateAfter, Config) ->
+    application:load(erleans),
+    application:set_env(erleans, deactivate_after, DeactivateAfter),
+    {ok, _} = application:ensure_all_started(erleans),
+    Config.
+
+end_per_group(_, _Config) ->
     application:stop(erleans),
+    application:unload(erleans),
     ok.
 
 init_per_testcase(_, Config) ->
@@ -129,8 +152,7 @@ request_types(_Config) ->
     spawn(fun () ->
                   [begin
                        timer:sleep(12),
-                       {ok, Ct} = test_grain:activated_counter(Grain),
-                       ct:pal("~p ~p", [erlang:monotonic_time(milli_seconds), Ct])
+                       {ok, _Ct} = test_grain:activated_counter(Grain)
                    end || _ <- lists:seq(1,4)]  % ~48 ms
           end),
     timer:sleep(40),
@@ -158,8 +180,7 @@ request_types(_Config) ->
                       put(req_type, leave_timer),
                       [begin
                            timer:sleep(6),
-                           Ct = (catch test_grain:activated_counter(GrainPid)),
-                           ct:pal("pinger ~p ~p", [erlang:monotonic_time(milli_seconds), Ct])
+                           _Ct = (catch test_grain:activated_counter(GrainPid))
                        end || _ <- lists:seq(1,10)]  % ~60 ms
               end),
     timer:sleep(60),

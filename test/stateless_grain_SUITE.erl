@@ -19,14 +19,12 @@ all() ->
     [single_activation, crash_worker, timeout_no_workers].
 
 init_per_suite(Config) ->
-    application:ensure_all_started(pgo),
     application:load(erleans),
     {ok, _} = application:ensure_all_started(erleans),
     Config.
 
 end_per_suite(_Config) ->
     application:stop(erleans),
-    application:stop(pgo),
     ok.
 
 single_activation(_Config) ->

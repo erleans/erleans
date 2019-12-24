@@ -120,13 +120,13 @@ call(GrainRef, Request) ->
 call(GrainRef, Request, Timeout) ->
     ReqType = req_type(),
     do_for_ref(GrainRef, fun(_, Pid) ->
-                             try
-                                 gen_statem:call(Pid, {otel:current_span_ctx(), ReqType, Request}, Timeout)
-                             catch
-                                 exit:{bad_etag, _} ->
-                                     ?LOG_ERROR("at=grain_exit reason=bad_etag", []),
-                                     {exit, saved_etag_changed}
-                             end
+                                 try
+                                     gen_statem:call(Pid, {otel:current_span_ctx(), ReqType, Request}, Timeout)
+                                 catch
+                                     exit:{bad_etag, _} ->
+                                         ?LOG_ERROR("at=grain_exit reason=bad_etag", []),
+                                         {exit, saved_etag_changed}
+                                 end
                          end).
 
 -spec cast(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
@@ -471,9 +471,9 @@ handle_actions([A | _Rest], _ActionsAcc, _CbData, _Data) ->
 update_state({_Ephemeral, Persistent}, Data) ->
     update_state(Persistent, Data);
 update_state(CbData, #data{id=Id,
-                            cb_module=CbModule,
-                            provider=Provider,
-                            etag=ETag}) ->
+                           cb_module=CbModule,
+                           provider=Provider,
+                           etag=ETag}) ->
     update_state(CbModule, Provider, Id, CbData, ETag).
 
 update_state(_CbModule, undefined, _Id, _CbData, _ETag) ->

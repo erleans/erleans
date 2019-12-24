@@ -20,32 +20,81 @@
 %%% ---------------------------------------------------------------------------
 -module(erleans_config).
 
--export([get/1,
+-behaviour(gen_server).
+
+-export([start_link/1,
+         get/1,
          get/2,
+         default_provider/0,
          provider/1]).
+
+-export([init/1,
+         handle_call/3,
+         handle_cast/2]).
 
 -include_lib("kernel/include/logger.hrl").
 
+-define(TABLE, ?MODULE).
+
+-record(state, {config :: list(),
+                tid :: ets:tid()}).
+
+start_link(Config) ->
+    gen_server:start_link({local, ?MODULE}, ?MODULE, Config, []).
+
 -spec get(atom()) -> any().
 get(Key) ->
-    {ok, Value} = application:get_env(erleans, Key),
-    Value.
+    ?MODULE:get(Key, undefined).
 
 -spec get(atom(), any()) -> any().
 get(Key, Default) ->
-    application:get_env(erleans, Key, Default).
+    try
+        ets:lookup_element(?TABLE, Key, 2)
+    catch
+        error:badarg ->
+            Default
+    end.
 
-provider(Grain) ->
-    Value = application:get_env(erleans, providers_mapping, []),
-    case proplists:get_value(Grain, Value, undefined) of
+default_provider() ->
+    persistent_term:get({?MODULE, default_provider}).
+
+providers_mapping() ->
+    persistent_term:get({?MODULE, providers_mapping}).
+
+provider(GrainType) ->
+    Mapping = providers_mapping(),
+    case proplists:get_value(GrainType, Mapping, undefined) of
         undefined ->
-            case application:get_env(erleans, default_provider) of
-                {ok, Provider} ->
-                    Provider;
-                _ ->
-                    ?LOG_ERROR("error=no_default_provider"),
-                    erlang:error(no_default_provider)
-            end;
+            default_provider();
         Provider ->
             Provider
+    end.
+
+init(Config) ->
+    Tid = ets:new(?TABLE, [protected, named_table, set, {read_concurrency, true}]),
+    setup_config(Config),
+    {ok, #state{config=Config,
+                tid=Tid}}.
+
+handle_call(_Msg, _From, State) ->
+    {noreply, State}.
+
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+%%
+
+setup_config(Config) ->
+    setup_provider_configuration(Config),
+    [ets:insert(?TABLE, {Key, Value}) || {Key, Value} <- Config].
+
+setup_provider_configuration(Config) ->
+    case proplists:get_value(default_provider, Config, undefined) of
+        undefined ->
+            ?LOG_ERROR("error=no_default_provider"),
+            erlang:error(no_default_provider);
+        DefaultProvider ->
+            persistent_term:put({?MODULE, default_provider}, DefaultProvider),
+            ProvidersMapping = proplists:get_value(providers_mapping, Config, undefined),
+            persistent_term:put({?MODULE, providers_mapping}, ProvidersMapping)
     end.

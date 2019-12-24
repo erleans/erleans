@@ -28,14 +28,12 @@ init_per_suite(Config) ->
     %% lower gossip interval of partisan membership so it triggers more often in tests
     application:set_env(partisan, gossip_interval, 100),
     application:load(lasp),
-    application:ensure_all_started(pgo),
     {ok, _} = application:ensure_all_started(erleans),
     start_nodes(),
     Config.
 
 end_per_suite(_Config) ->
     application:stop(erleans),
-    application:stop(pgo),
     application:stop(plumtree),
     application:stop(partisan),
     application:stop(lasp_pg),

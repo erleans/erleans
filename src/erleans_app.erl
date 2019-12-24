@@ -27,7 +27,8 @@
 -include_lib("kernel/include/logger.hrl").
 
 start(_StartType, _StartArgs) ->
-    {ok, Pid} = erleans_sup:start_link(),
+    Config = application:get_all_env(erleans),
+    {ok, Pid} = erleans_sup:start_link(Config),
     init_providers(),
     {ok, Pid}.
 
@@ -38,7 +39,7 @@ stop(_State) ->
 %% Internal functions
 
 init_providers() ->
-    Providers = erleans_config:get(providers, []),
+    Providers = erleans_config:get(providers, #{}),
     maps:map(fun(ProviderName, Config) ->
                      %% start provider as child of erleans_provider_sup
                      case erleans_provider_sup:start_child(ProviderName, Config) of

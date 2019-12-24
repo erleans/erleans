@@ -1,6 +1,7 @@
 -module(erleans_provider_ets).
 
 -behaviour(erleans_provider).
+-behaviour(gen_server).
 
 -export([start_link/2,
          all/2,

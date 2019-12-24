@@ -17,23 +17,32 @@
 -define(g, timer_test_grain).
 
 all() ->
-    [single_timer, multiple_timers, crashy_timer, timer_shutdown].
+    [{group, defaults},
+     {group, deactivate_after_30}].
+
+groups() ->
+    [{defaults, [], [single_timer, multiple_timers, crashy_timer]},
+     {deactivate_after_30, [], [timer_shutdown]}].
 
 init_per_suite(Config) ->
-    application:ensure_all_started(pgo),
-    application:load(erleans),
-    {ok, _} = application:ensure_all_started(erleans),
     Config.
 
 end_per_suite(_Config) ->
-    application:stop(erleans),
-    application:stop(pgo),
     ok.
 
-init_per_testcase(_, Config) ->
+init_per_group(defaults, Config) ->
+    application:load(erleans),
+    {ok, _} = application:ensure_all_started(erleans),
+    Config;
+init_per_group(deactivate_after_30, Config) ->
+    application:load(erleans),
+    application:set_env(erleans, deactivate_after, 30),
+    {ok, _} = application:ensure_all_started(erleans),
     Config.
 
-end_per_testcase(_, _Config) ->
+end_per_group(_, _Config) ->
+    application:stop(erleans),
+    application:unload(erleans),
     ok.
 
 single_timer(_Config) ->
@@ -90,7 +99,6 @@ crashy_timer(_Config) ->
     ok.
 
 timer_shutdown(_Config) ->
-    application:set_env(erleans, deactivate_after, 30),
     Grain = erleans:get_grain(timer_test_grain, <<"shutdown-timer-test-grain">>),
 
     ?g:long_timer(Grain),
@@ -103,7 +111,6 @@ timer_shutdown(_Config) ->
 
     {ok, Acc0} = ?g:clear(Grain),
     Acc = lists:reverse(Acc0),
-    ct:pal("~p", [Acc]),
 
     {Calls, Pids} = lists:unzip(Acc),
     %% two short before that timer gets cancelled, then a long and a
