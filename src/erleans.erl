@@ -63,19 +63,17 @@ provider(CbModule) ->
 -spec find_provider_config(atom()) -> provider().
 find_provider_config(default) ->
     %% throw an exception if default_provider is set to default, which would cause an infinite loop
-    case erleans_config:default_provider() of
+    case erleans_providers:default() of
         default ->
-            throw(bad_default_provider_config);
+            error(bad_default_provider_config);
         DefaultProvider ->
             find_provider_config(DefaultProvider)
     end;
 find_provider_config(Name) ->
-    case maps:find(Name, erleans_config:get(providers, #{})) of
-        error ->
+    case erleans_providers:provider(Name) of
+        undefined ->
             throw({missing_provider_config, Name});
-        {ok, ProviderOptions} ->
-            %% TODO: handle missing module and log error
-            Module = maps:get(module, ProviderOptions),
+        Module ->
             {Module, Name}
     end.
 

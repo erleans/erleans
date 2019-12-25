@@ -28,26 +28,10 @@
 
 start(_StartType, _StartArgs) ->
     Config = application:get_all_env(erleans),
-    {ok, Pid} = erleans_sup:start_link(Config),
-    init_providers(),
-    {ok, Pid}.
+    erleans_sup:start_link(Config).
 
 stop(_State) ->
     erleans_cluster:leave(),
     ok.
 
 %% Internal functions
-
-init_providers() ->
-    Providers = erleans_config:get(providers, #{}),
-    maps:map(fun(ProviderName, Config) ->
-                     %% start provider as child of erleans_provider_sup
-                     case erleans_provider_sup:start_child(ProviderName, Config) of
-                         %% handle crash here so application stops with good error message?
-                         {ok, _} ->
-                             ok;
-                         {error, Reason} ->
-                             ?LOG_ERROR("failed to initialize provider ~s: reason=~p", [ProviderName, Reason]),
-                             ok
-                     end
-             end, Providers).

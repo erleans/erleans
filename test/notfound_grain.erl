@@ -24,7 +24,7 @@ placement() ->
     prefer_local.
 
 provider() ->
-    erleans_config:default_provider().
+    default.
 
 anything(Ref) ->
     erleans_grain:call(Ref, anything).

@@ -35,7 +35,7 @@ placement() ->
     prefer_local.
 
 provider() ->
-    erleans_config:default_provider().
+    default.
 
 start_timers(Ref) ->
     erleans_grain:call(Ref, start_timers).

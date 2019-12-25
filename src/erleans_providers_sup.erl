@@ -12,48 +12,36 @@
 %%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %%% See the License for the specific language governing permissions and
 %%% limitations under the License.
-%%%----------------------------------------------------------------------------
-
-%%%-------------------------------------------------------------------
-%% @doc erleans top level supervisor.
+%%%
+%% @doc erleans providers supervisor.
 %% @end
 %%%-------------------------------------------------------------------
 
--module(erleans_sup).
+-module(erleans_providers_sup).
 
 -behaviour(supervisor).
 
--export([start_link/1]).
+-export([start_link/0]).
 
 -export([init/1]).
 
 -define(SERVER, ?MODULE).
 
--spec start_link([{atom(), term()}]) -> {ok, pid()}.
-start_link(Config) ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, [Config]).
+-spec start_link() -> {ok, pid()}.
+start_link() ->
+    supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
-init([Config]) ->
-    SupFlags = #{strategy => one_for_one,
+init([]) ->
+    SupFlags = #{strategy => one_for_all,
                  intensity => 5,
                  period => 10},
-    ChildSpecs = [#{id => erleans_config,
-                    start => {erleans_config, start_link, [Config]},
-                    restart => permanent,
-                    type => worker,
-                    shutdown => 5000},
-                  #{id => erleans_providers_sup,
-                    start => {erleans_providers_sup, start_link, []},
+    ChildSpecs = [#{id => erleans_provider_sup,
+                    start => {erleans_provider_sup, start_link, []},
                     restart => permanent,
                     type => supervisor,
                     shutdown => 5000},
-                  #{id => erleans_grain_sup,
-                    start => {erleans_grain_sup, start_link, []},
-                    restart => permanent,
-                    type => supervisor,
-                    shutdown => 5000},
-                  #{id => erleans_discovery,
-                    start => {erleans_discovery, start_link, []},
+                  #{id => erleans_providers,
+                    start => {erleans_providers, start_link, []},
                     restart => permanent,
                     type => worker,
                     shutdown => 5000}],

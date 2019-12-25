@@ -25,8 +25,7 @@
 -export([start_link/1,
          get/1,
          get/2,
-         default_provider/0,
-         provider/1]).
+         set/2]).
 
 -export([init/1,
          handle_call/3,
@@ -55,20 +54,8 @@ get(Key, Default) ->
             Default
     end.
 
-default_provider() ->
-    persistent_term:get({?MODULE, default_provider}).
-
-providers_mapping() ->
-    persistent_term:get({?MODULE, providers_mapping}).
-
-provider(GrainType) ->
-    Mapping = providers_mapping(),
-    case proplists:get_value(GrainType, Mapping, undefined) of
-        undefined ->
-            default_provider();
-        Provider ->
-            Provider
-    end.
+set(Key, Value) ->
+    gen_server:call(?MODULE, {set, Key, Value}).
 
 init(Config) ->
     Tid = ets:new(?TABLE, [protected, named_table, set, {read_concurrency, true}]),
@@ -76,8 +63,9 @@ init(Config) ->
     {ok, #state{config=Config,
                 tid=Tid}}.
 
-handle_call(_Msg, _From, State) ->
-    {noreply, State}.
+handle_call({set, Key, Value}, _From, State) ->
+    ets:insert(?TABLE, {Key, Value}),
+    {reply, ok, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -85,16 +73,4 @@ handle_cast(_Msg, State) ->
 %%
 
 setup_config(Config) ->
-    setup_provider_configuration(Config),
     [ets:insert(?TABLE, {Key, Value}) || {Key, Value} <- Config].
-
-setup_provider_configuration(Config) ->
-    case proplists:get_value(default_provider, Config, undefined) of
-        undefined ->
-            ?LOG_ERROR("error=no_default_provider"),
-            erlang:error(no_default_provider);
-        DefaultProvider ->
-            persistent_term:put({?MODULE, default_provider}, DefaultProvider),
-            ProvidersMapping = proplists:get_value(providers_mapping, Config, undefined),
-            persistent_term:put({?MODULE, providers_mapping}, ProvidersMapping)
-    end.

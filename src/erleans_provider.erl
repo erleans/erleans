@@ -50,5 +50,5 @@
     {error, not_found}.
 
 start_link(Name, #{module := Module,
-                   args := Args}) ->
+                   args   := Args}) ->
     Module:start_link(Name, Args).
