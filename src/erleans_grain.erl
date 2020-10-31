@@ -79,7 +79,8 @@
 
 -callback handle_info(Msg :: term(), CbData :: cb_state()) -> callback_result().
 
--callback deactivate(CbData :: cb_state()) -> ok | save_state | {save, Data :: term()}.
+-callback deactivate(CbData :: cb_state()) -> {ok, CbData :: cb_state()} |
+                                              {save_state, CbData :: cb_state()}.
 
 -optional_callbacks([activate/2,
                      provider/0,
