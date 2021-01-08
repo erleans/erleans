@@ -24,11 +24,11 @@
 
 -callback all(Type :: module(), ProviderName :: atom()) -> {ok, [any()]} | {error, any()}.
 
--callback read(Type :: module(), ProviderName :: atom(), GrainRef :: erleans:grain_ref()) ->
+-callback read(Type :: module(), ProviderName :: atom(), Id :: term()) ->
     {ok, State :: any(), ETag :: erleans:etag()} |
-    {error, not_found}.
+    {error, any()}.
 
--callback read_by_hash(Type :: module(), ProviderName :: atom(), GrainRef :: erleans:grain_ref()) ->
+-callback read_by_hash(Type :: module(), ProviderName :: atom(), Hash :: integer()) ->
     {ok,  [{GrainRef :: erleans:grain_ref(), Type :: module(), ETag :: erleans:etag(), State :: any()}]} |
     {error, not_found}.
 
@@ -41,13 +41,13 @@
                   ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
     ok |
     {error, {bad_etag, erleans:etag(), erleans:etag()}} |
-    {error, not_found}.
+    {error, any()}.
 
 -callback update(Type :: module(), ProviderName :: atom(), Id :: any(), Hash :: integer(),
                   State :: any(), ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
     ok |
     {error, {bad_etag, erleans:etag(), erleans:etag()}} |
-    {error, not_found}.
+    {error, any()}.
 
 start_link(Name, #{module := Module,
                    args   := Args}) ->
