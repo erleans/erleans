@@ -119,15 +119,6 @@ type2Buckets(Type) ->
  
 init([ProviderName, #{address := Address, pb_port := PBport} = Args]) ->
     ?LOG_DEBUG("epr init ~p ~p~n", [ProviderName, Args]),
-    LogLevel = maps:get(log_level, Args, info), 
-    case maps:get(alog_dest, Args, undefined) of
-        undefined -> ok;
-        AlogDest ->
-            Config = #{config => #{alog_dest => AlogDest, local_port => 7777}, json_output => true, colored => true},
-            logger:add_handler(alog_handler, alog, Config),
-            logger:set_module_level(?MODULE, LogLevel)
-    end,
-    ?LOG_DEBUG("epr init ~p ~p~n", [ProviderName, Args]),
     case riakc_pb_socket:start_link(Address, PBport) of
         {ok, PBSocketPid} -> 
             ?LOG_DEBUG("epr init success sock id:~p process id: ~p~n", [PBSocketPid, self()]),
