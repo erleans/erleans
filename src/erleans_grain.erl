@@ -49,6 +49,7 @@
 
 -define(DEFAULT_TIMEOUT, 5000).
 -define(NO_PROVIDER_ERROR, no_provider_configured).
+-define(GUARD, guard_pid).
 
 -type cb_state() :: {EphemeralState :: term(), PersistentState :: term()} | term().
 
@@ -228,7 +229,18 @@ init(Parent, GrainRef) ->
                 {_, Pid} when Pid =/= Self ->
                     proc_lib:init_ack(Parent, {error, {already_started, Pid}});
                 {_, _Pid} ->
-                    erleans_pm:register_name(GrainRef, Self),
+                    %%no error handling to keep original behavior
+                    case erleans_pm:register_name(GrainRef, Self) of
+                        yes ->
+                            case erleans_pm:start_guard(GrainRef) of
+                                {ok, Guard} ->
+                                    put(?GUARD, Guard);
+                                _Error ->
+                                    _Error
+                            end;
+                        _Error ->
+                            _Error
+                    end,
                     init_(Parent, GrainRef)
             end
     end.
@@ -405,6 +417,7 @@ maybe_unregister(#{placement := {stateless, _}}) ->
     ok;
 maybe_unregister(GrainRef) ->
     erleans_pm:unregister_name(GrainRef, self()),
+    erleans_pm:stop_guard(get(?GUARD)),
     gproc:unreg(?stateful(GrainRef)).
 
 upd_timer(leave_timer, _) ->

@@ -51,7 +51,7 @@ init([Config]) ->
                     start => {erleans_grain_sup, start_link, []},
                     restart => permanent,
                     type => supervisor,
-                    shutdown => 5000},
+                    shutdown => infinity},
                   #{id => erleans_discovery,
                     start => {erleans_discovery, start_link, []},
                     restart => permanent,
