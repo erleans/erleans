@@ -27,7 +27,6 @@
          send/2]).
 
 -include("erleans.hrl").
--include_lib("lasp_pg/include/lasp_pg.hrl").
 -include_lib("kernel/include/logger.hrl").
 
 -dialyzer({nowarn_function, register_name/2}).
@@ -35,12 +34,12 @@
 
 -spec register_name(Name :: term(), Pid :: pid()) -> yes | no.
 register_name(Name, Pid) when is_pid(Pid) ->
-    case lasp_pg:join(Name, Pid, true) of
-        {ok, _} ->
+    case global:register_name(Name, Pid) of
+        yes ->
             %% Set up a callback to be triggered on a single node (lasp handles this)
             %% when the number of pids registered for this name goes above 1
-            EnforceFun = fun(AwSet) -> deactivate_dups(Name, AwSet) end,
-            lasp:enforce_once({term_to_binary(Name), ?SET}, {strict, {cardinality, 1}}, EnforceFun),
+            %% _EnforceFun = fun(AwSet) -> deactivate_dups(Name, AwSet) end,
+            %% lasp:enforce_once({term_to_binary(Name), ?SET}, {strict, {cardinality, 1}}, EnforceFun),
             yes;
         _ ->
             no
@@ -72,13 +71,14 @@ unregister_name(Name) ->
     end.
 
 -spec unregister_name(Name :: term(), Pid :: pid()) -> Name :: term() | fail.
-unregister_name(Name, Pid) ->
-    case lasp_pg:leave(Name, Pid) of
-        {ok, _} ->
-            Name;
-        _ ->
-            fail
-    end.
+unregister_name(Name, _Pid) ->
+    global:unregister_name(Name).
+    %% case lasp_pg:leave(Name, Pid) of
+    %%     {ok, _} ->
+    %%         Name;
+    %%     _ ->
+    %%         fail
+    %% end.
 
 -spec whereis_name(GrainRef :: erleans:grain_ref()) -> pid() | undefined.
 whereis_name(GrainRef=#{placement := stateless}) ->
@@ -90,17 +90,18 @@ whereis_name(GrainRef) ->
         Pid when is_pid(Pid) ->
             Pid;
         _ ->
-            case lasp_pg:members(GrainRef) of
-                {ok, Set} ->
-                    case sets:to_list(Set) of
-                        [Pid | _] ->
-                            Pid;
-                        _ ->
-                            undefined
-                    end;
-                _ ->
-                    undefined
-            end
+            global:whereis_name(GrainRef)
+            %% case lasp_pg:members(GrainRef) of
+            %%     {ok, Set} ->
+            %%         case sets:to_list(Set) of
+            %%             [Pid | _] ->
+            %%                 Pid;
+            %%             _ ->
+            %%                 undefined
+            %%         end;
+            %%     _ ->
+            %%         undefined
+            %% end
     end.
 
 -spec send(Name :: term(), Message :: term()) -> pid().

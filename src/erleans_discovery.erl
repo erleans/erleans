@@ -18,7 +18,7 @@
                                  | {fqdns, string()}
                                  | {srv, string()}
                                  | {ip, string()},
-               partisan_port    :: integer() | undefined,
+               nodes            :: list(),
                nodename         :: atom() | undefined,
                refresh_interval :: integer() | infinity}).
 
@@ -37,14 +37,16 @@ init([]) ->
     case erleans_config:get(node_discovery, none) of
         none ->
             {ok, active, #data{type=none,
+                               nodes=[],
                                refresh_interval=infinity}};
         Type ->
-            PartisanPort = erleans_config:get(partisan_port, 10200),
+            %% PartisanPort = erleans_config:get(partisan_port, 10200),
             NodeName = erleans_config:get(nodename, nonodename),
             RefreshInterval = erleans_config:get(refresh_interval, 5000),
+            Nodes = erleans_config:get(nodes, []),
             {ok, inactive, #data{type=Type,
-                                 partisan_port=PartisanPort,
                                  nodename=NodeName,
+                                 nodes=Nodes,
                                  refresh_interval=RefreshInterval}, [{next_event, internal, refresh}]}
     end.
 
@@ -69,13 +71,15 @@ code_change(_, _OldState, Data, _) ->
 %% Internal functions
 
 handle_event({call, From}, members, _Data) ->
-    {ok, MembersList} = partisan_peer_service:members(),
-    {keep_state_and_data, [{reply, From, {ok, MembersList}}]}.
+    %% {ok, MembersList} = partisan_peer_service:members(),
+    Nodes = nodes(),
+    {keep_state_and_data, [{reply, From, {ok, Nodes}}]}.
 
 handle_refresh(#data{type=none}) ->
     ok;
-handle_refresh(#data{type=Type,
-                     nodename=NodeName,
-                     partisan_port=PartisanPort}) ->
-    Nodes = erleans_dns_peers:discover(Type, NodeName, PartisanPort),
-    ok = partisan_peer_service:update_members(Nodes).
+handle_refresh(#data{type=_Type,
+                     nodename=_NodeName,
+                     nodes=Nodes}) ->
+    %% Nodes = erleans_dns_peers:discover(Type, NodeName, PartisanPort),
+    [net_adm:ping(Node) || Node <- Nodes].
+    %% ok = partisan_peer_service:update_members(Nodes).

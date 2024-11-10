@@ -45,7 +45,7 @@ start_link(Config) ->
 get(Key) ->
     ?MODULE:get(Key, undefined).
 
--spec get(atom(), any()) -> any().
+-spec get(atom(), dynamic()) -> dynamic().
 get(Key, Default) ->
     try
         ets:lookup_element(?TABLE, Key, 2)

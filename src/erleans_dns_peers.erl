@@ -22,7 +22,8 @@
 discover(ClusterType, NodeName, Port) ->
     AllNodes = lookup(ClusterType, NodeName, Port),
     sets:fold(fun({Name, Host, PartisanPort}, Acc) ->
-                  [erleans_cluster:to_node(Name, Host, PartisanPort) | Acc]
+                      Name
+                  %% [erleans_cluster:to_node(Name, Host, PartisanPort) | Acc]
               end, [], AllNodes).
 
 leave() ->

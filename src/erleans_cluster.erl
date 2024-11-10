@@ -21,10 +21,9 @@
          leave/0]).
 
 -include_lib("kernel/include/inet.hrl").
--include_lib("partisan/include/partisan.hrl").
 
 to_node(Name, Host) ->
-    to_node(Name, Host, ?PEER_PORT).
+    to_node(Name, Host, 8080).
 
 to_node(Name, Host, PartisanPort) ->
     IP = case inet:parse_address(Host) of
@@ -34,9 +33,10 @@ to_node(Name, Host, PartisanPort) ->
              {ok, IPAddress} ->
                  IPAddress
          end,
-    #{name => Name,
-      listen_addrs => [#{ip => IP, port => PartisanPort}],
-      parallelism => 1}.
+    list_to_atom(Host ++ "@" ++ IP).
+    %% #{name => Name,
+    %%   listen_addrs => [#{ip => IP, port => PartisanPort}],
+    %%   parallelism => 1}.
 
 leave() ->
     partisan_peer_service:leave([]).
