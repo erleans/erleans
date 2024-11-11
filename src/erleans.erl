@@ -26,15 +26,26 @@
 
 -type grain_ref() :: #{implementing_module := module(),
                        id                  := term(),
-                       placement           := placement(),
+                       placement           := grain_placement(),
                        provider            => provider() | undefined}.
 
--type placement() :: random | prefer_local | stateless | {stateless, integer()} | system_grain. %% | load
+-type grain_placement() :: random |
+                           prefer_local |
+                           stateless |
+                           {stateless, integer()} |
+                           system_grain. %% | load
+
+-define(IS_GRAIN_PLACEMENT(X),
+        X =:= random orelse
+        X =:= prefer_local orelse
+        X =:= stateless orelse
+        element(1, X) =:= stateless orelse
+        X =:= system_grain).
 
 -type etag() :: integer().
 
 -export_type([grain_ref/0,
-              placement/0,
+              grain_placement/0,
               provider/0,
               etag/0]).
 
@@ -51,18 +62,19 @@ get_grain(ImplementingModule, Id) ->
             BaseGrainRef#{provider => provider(ImplementingModule)}
     end.
 
--spec provider(module()) -> provider().
+-spec provider(module()) -> provider() | undefined.
 provider(CbModule) ->
     case erleans_utils:fun_or_default(CbModule, provider, undefined) of
         undefined ->
             undefined;
-        Name ->
+        Name when is_atom(Name) ->
             find_provider_config(Name)
     end.
 
 -spec find_provider_config(atom()) -> provider().
 find_provider_config(default) ->
-    %% throw an exception if default_provider is set to default, which would cause an infinite loop
+    %% throw an exception if default_provider is set to default,
+    %% which would cause an infinite loop
     case erleans_providers:default() of
         default ->
             error(bad_default_provider_config);
@@ -77,11 +89,11 @@ find_provider_config(Name) ->
             {Module, Name}
     end.
 
--spec placement(module()) -> placement().
+-spec placement(module()) -> grain_placement().
 placement(Module) ->
     case erleans_utils:fun_or_default(Module, placement, ?DEFAULT_PLACEMENT) of
         stateless ->
             {stateless, erleans_config:get(default_stateless_max, 5)};
-        Placement ->
+        Placement when ?IS_GRAIN_PLACEMENT(Placement) ->
             Placement
     end.

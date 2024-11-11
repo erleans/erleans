@@ -28,15 +28,14 @@
          set/2]).
 
 -export([init/1,
+         deactivate_after/0,
          handle_call/3,
          handle_cast/2]).
-
--include_lib("kernel/include/logger.hrl").
 
 -define(TABLE, ?MODULE).
 
 -record(state, {config :: list(),
-                tid :: ets:tid()}).
+                tid :: ets:table()}).
 
 start_link(Config) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Config, []).
@@ -44,6 +43,16 @@ start_link(Config) ->
 -spec get(atom()) -> any().
 get(Key) ->
     ?MODULE:get(Key, undefined).
+
+deactivate_after() ->
+    case ?MODULE:get(deactivate_after) of
+        DeactivateAfter when DeactivateAfter =:= infinity
+                             orelse (is_integer(DeactivateAfter)
+                                     andalso DeactivateAfter >= 0) ->
+            DeactivateAfter;
+        undefined ->
+            2700000
+    end.
 
 -spec get(atom(), dynamic()) -> dynamic().
 get(Key, Default) ->
@@ -58,7 +67,10 @@ set(Key, Value) ->
     gen_server:call(?MODULE, {set, Key, Value}).
 
 init(Config) ->
-    Tid = ets:new(?TABLE, [protected, named_table, set, {read_concurrency, true}]),
+    Tid = ets:new(?TABLE, [protected,
+                           named_table,
+                           set,
+                           {read_concurrency, true}]),
     setup_config(Config),
     {ok, #state{config=Config,
                 tid=Tid}}.
