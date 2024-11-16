@@ -216,15 +216,11 @@ activate_local(GrainRef) ->
 
 %% Activate the grain on a random node in the cluster
 activate_random(GrainRef) ->
-    Node = random_node(),
-    erleans_grain_sup:start_child(Node, GrainRef).
-
--spec random_node() -> dynamic().
-random_node() ->
     Nodes = [node() | nodes()],
     Size = erlang:length(Nodes),
     Nth = rand:uniform(Size),
-    lists:nth(Nth, Nodes).
+    Node = lists:nth(Nth, Nodes),
+    erleans_grain_sup:start_child(Node, GrainRef).
 
 %% not used but required by the behaviour definition
 init(Args) -> erlang:error(not_implemented, [Args]).

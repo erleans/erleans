@@ -24,8 +24,6 @@
 -export([start/2,
          stop/1]).
 
--include_lib("kernel/include/logger.hrl").
-
 start(_StartType, _StartArgs) ->
     Config = application:get_all_env(erleans),
     erleans_sup:start_link(Config).

@@ -29,7 +29,6 @@
 
 -define(SERVER, ?MODULE).
 
--spec start_link([{atom(), term()}]) -> {ok, pid()}.
 start_link(Config) ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, [Config]).
 

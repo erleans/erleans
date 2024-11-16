@@ -29,8 +29,6 @@
          handle_info/2,
          deactivate/1]).
 
--include("erleans.hrl").
-
 placement() ->
     prefer_local.
 
