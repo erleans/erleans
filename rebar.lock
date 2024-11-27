@@ -2,7 +2,7 @@
 [{<<"cf">>,{pkg,<<"cf">>,<<"0.3.1">>},1},
  {<<"eqwalizer_support">>,
   {git_subdir,"https://github.com/whatsapp/eqwalizer.git",
-              {ref,"ba473dabfc39d45c9f3f37ba6294a18e52e72637"},
+              {ref,"c4c54bcdc958fcd630bf048f09feb9de858bede5"},
               "eqwalizer_support"},
   0},
  {<<"erlware_commons">>,{pkg,<<"erlware_commons">>,<<"1.7.0">>},0},
