@@ -121,7 +121,9 @@ start_link(GrainRef) ->
         {ok, undefined} ->
             {ok, undefined};
         {error, Reason} ->
-            {error, Reason}
+            {error, Reason};
+        ignore ->
+            {error, notfound}
     end.
 
 -spec call(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
@@ -166,7 +168,7 @@ do_for_ref(GrainRef=#{placement := {stateless, _N}}, Fun) ->
     end;
 do_for_ref(GrainRef, Fun) ->
     try
-        case erleans_pm:whereis_name(GrainRef) of
+        case erleans_grain_registry:whereis_name(GrainRef) of
             Pid when is_pid(Pid) ->
                 Fun(noname, Pid);
             undefined ->
@@ -240,7 +242,7 @@ init(Parent, GrainRef) ->
                 {_, Pid} when Pid =/= Self ->
                     proc_lib:init_ack(Parent, {error, {already_started, Pid}});
                 {_, _Pid} ->
-                    erleans_pm:register_name(GrainRef, Self),
+                    erleans_grain_registry:register_name(GrainRef, Self),
                     init_(Parent, GrainRef)
             end
     end.
