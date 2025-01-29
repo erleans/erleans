@@ -8,8 +8,6 @@
     stdlib,
     sasl,
     uuid,
-    lasp,
-    lasp_pg,
     gproc,
     sbroker,
     erlware_commons,

@@ -24,12 +24,9 @@ defmodule Erleans.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:lasp, "~> 0.8.2", override: true},
-      {:lasp_pg, "~> 0.1.0"},
-      {:partisan, "~> 3.0", override: true},
       {:gproc, "~> 0.8.0"},
       {:sbroker, "~> 1.0.0"},
-      {:opentelemetry_api, github: "open-telemetry/opentelemetry-erlang-api"},
+      {:opentelemetry_api, "~>1.4.0"},
       {:erlware_commons, "~> 1.3.1"},
       {:types, "~> 0.1.8", override: true},
       {:uuid, "~> 1.8", hex: :uuid_erl, override: true},

@@ -67,8 +67,8 @@ manual_start_stop(_Config) ->
     ?assertEqual({ok, 1}, test_grain:activated_counter(Grain2)),
 
     %% with a leasetime of 1 second it should be gone now
-    ?UNTIL(erleans_pm:whereis_name(Grain1) =:= undefined),
-    ?UNTIL(erleans_pm:whereis_name(Grain2) =:= undefined),
+    ?UNTIL(erleans_grain_registry:whereis_name(Grain1) =:= undefined),
+    ?UNTIL(erleans_grain_registry:whereis_name(Grain2) =:= undefined),
 
     %% sending message by asking for the counter again will re-activate grain
     %% and increment the activated counter
@@ -93,7 +93,7 @@ bad_etag_save(_Config) ->
     %% Now a save call should crash the grain
     ?assertMatch({exit, saved_etag_changed}, test_grain:save(Grain)),
 
-    ?UNTIL(erleans_pm:whereis_name(Grain) =:= undefined),
+    ?UNTIL(erleans_grain_registry:whereis_name(Grain) =:= undefined),
 
     %% resulting in a new activation when called again
     ?assertEqual({ok, 3}, test_grain:activated_counter(Grain)),
@@ -110,7 +110,7 @@ ephemeral_state(_Config) ->
     ?assertEqual(ok, test_ephemeral_state_grain:increment_ephemeral_counter(Grain)),
 
     %% with a leasetime of 1 second it should be gone now
-    ?UNTIL(erleans_pm:whereis_name(Grain) =:= undefined),
+    ?UNTIL(erleans_grain_registry:whereis_name(Grain) =:= undefined),
 
     %% sending message by asking for the counter again will re-activate grain
     %% and increment the activated counter
@@ -140,7 +140,7 @@ request_types(_Config) ->
     GrainPid = (fun Loop(0) ->
                         error(waaah);
                     Loop(N) ->
-                        case erleans_pm:whereis_name(Grain) of
+                        case erleans_grain_registry:whereis_name(Grain) of
                             Pid when is_pid(Pid) -> Pid;
                             _ ->
                                 timer:sleep(1),
@@ -161,7 +161,7 @@ request_types(_Config) ->
     GrainPid2 = (fun Loop(0) ->
                         error(waaah);
                     Loop(N) ->
-                        case erleans_pm:whereis_name(Grain) of
+                        case erleans_grain_registry:whereis_name(Grain) of
                             Pid when is_pid(Pid) -> Pid;
                             _ ->
                                 timer:sleep(1),

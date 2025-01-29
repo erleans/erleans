@@ -58,7 +58,7 @@ single_timer(_Config) ->
     ?assertEqual([a, a, a, a, a], Acc1),
     ?g:start_one_timer(Grain),
     timer:sleep(50), % acc should be [a, a, a, a, a]
-    Pid = erleans_pm:whereis_name(Grain),
+    Pid = erleans_grain_registry:whereis_name(Grain),
     ok = ?g:stop(Grain), % but should clear when it stops
     (fun Loop() ->
              case is_process_alive(Pid) of
@@ -67,7 +67,7 @@ single_timer(_Config) ->
              end
      end)(),
     ?assertMatch({ok, _Node}, ?g:node(Grain)),  % reactivate the grain
-    ?assertNotEqual(Pid, erleans_pm:whereis_name(Grain)),
+    ?assertNotEqual(Pid, erleans_grain_registry:whereis_name(Grain)),
     ?assertEqual({ok, []}, ?g:clear(Grain)),
     ok.
 

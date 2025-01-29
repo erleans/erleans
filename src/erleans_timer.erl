@@ -20,9 +20,9 @@
 %%% access to grain state or identity, their fun can contain anything,
 %%% so they can easily send a message to a grain.
 %%%
-%%% `cancel_timer/0` is supplied as a helper for simple situations
+%%% `cancel_timer/0' is supplied as a helper for simple situations
 %%% where a grain only has one timer going.  In the case that there
-%%% many timers going at once, `cancel_timer/1` must be used
+%%% many timers going at once, `cancel_timer/1' must be used
 %%% explicitly on each.
 %%%
 %%% A note about timers and shutdown.  Following Orleans, calls made
@@ -48,7 +48,7 @@
 -record(timer,
         {
           grain :: pid(),
-          grain_ref :: map(),
+          grain_ref :: erleans:grain_ref() | undefined,
           callback :: function(),
           args :: term(),
           period :: pos_integer() | never
@@ -64,7 +64,7 @@ start(Callback, Args, StartTime, Period) ->
     case get(grain_ref) of
         undefined ->
             {error, called_outside_of_grain_context};
-        GrainRef ->
+        GrainRef=#{} ->
             GrainPid = self(),
             Timer =
                 #timer{grain = GrainPid,

@@ -1,5 +1,5 @@
 %%%----------------------------------------------------------------------------
-%%% Copyright Tristan Sloughter 2019. All Rights Reserved.
+%%% Copyright Tristan Sloughter 2024. All Rights Reserved.
 %%%
 %%% Licensed under the Apache License, Version 2.0 (the "License");
 %%% you may not use this file except in compliance with the License.
@@ -15,10 +15,10 @@
 %%%----------------------------------------------------------------------------
 
 %%% ---------------------------------------------------------------------------
-%%% @doc Erleans Grain process manager.
+%%% @doc Erleans Grain registry backed by Erlang's global.
 %%% @end
 %%% ---------------------------------------------------------------------------
--module(erleans_pm).
+-module(erleans_grain_registry_global).
 
 -export([register_name/2,
          unregister_name/1,
@@ -27,58 +27,32 @@
          send/2]).
 
 -include("erleans.hrl").
--include_lib("lasp_pg/include/lasp_pg.hrl").
--include_lib("kernel/include/logger.hrl").
 
 -dialyzer({nowarn_function, register_name/2}).
 -dialyzer({nowarn_function, unregister_name/2}).
 
--spec register_name(Name :: term(), Pid :: pid()) -> yes | no.
+-spec register_name(Name :: erleans:grain_ref(), Pid :: pid()) -> yes | no.
 register_name(Name, Pid) when is_pid(Pid) ->
-    case lasp_pg:join(Name, Pid, true) of
-        {ok, _} ->
-            %% Set up a callback to be triggered on a single node (lasp handles this)
-            %% when the number of pids registered for this name goes above 1
-            EnforceFun = fun(AwSet) -> deactivate_dups(Name, AwSet) end,
-            lasp:enforce_once({term_to_binary(Name), ?SET}, {strict, {cardinality, 1}}, EnforceFun),
+    case global:register_name(Name, Pid) of
+        yes ->
             yes;
         _ ->
             no
     end.
 
-%% deactivate all but a random activation.
-%% It is possible that this will be triggered multiple times and result in no
-%% remaining activations until the next request to a grain.
-deactivate_dups(Name, AwSet) ->
-    Set = state_awset:query(AwSet),
-    Size = sets:size(Set),
-    Keep = rand:uniform(Size),
-    ?LOG_INFO("at=deactivate_dups name=~p size=~p keep=~p", [Name, Size, Keep]),
-    sets:fold(fun(_, N) when N =:= Size ->
-                  N+1;
-                 (Pid, N) ->
-                  supervisor:terminate_child({erleans_grain_sup, node(Pid)}, Pid),
-                  N+1
-              end, 1, Set).
-
-
--spec unregister_name(Name :: term()) -> Name :: term() | fail.
+-spec unregister_name(Name :: erleans:grain_ref()) -> ok.
 unregister_name(Name) ->
     case ?MODULE:whereis_name(Name) of
         Pid when is_pid(Pid) ->
             unregister_name(Name, Pid);
         undefined ->
-            undefined
+            ok
     end.
 
--spec unregister_name(Name :: term(), Pid :: pid()) -> Name :: term() | fail.
-unregister_name(Name, Pid) ->
-    case lasp_pg:leave(Name, Pid) of
-        {ok, _} ->
-            Name;
-        _ ->
-            fail
-    end.
+-spec unregister_name(Name :: erleans:grain_ref(), Pid :: pid()) -> ok.
+unregister_name(Name, _Pid) ->
+    _ = global:unregister_name(Name),
+    ok.
 
 -spec whereis_name(GrainRef :: erleans:grain_ref()) -> pid() | undefined.
 whereis_name(GrainRef=#{placement := stateless}) ->
@@ -90,20 +64,10 @@ whereis_name(GrainRef) ->
         Pid when is_pid(Pid) ->
             Pid;
         _ ->
-            case lasp_pg:members(GrainRef) of
-                {ok, Set} ->
-                    case sets:to_list(Set) of
-                        [Pid | _] ->
-                            Pid;
-                        _ ->
-                            undefined
-                    end;
-                _ ->
-                    undefined
-            end
+            global:whereis_name(GrainRef)
     end.
 
--spec send(Name :: term(), Message :: term()) -> pid().
+-spec send(Name :: erleans:grain_ref(), Message :: term()) -> term().
 send(Name, Message) ->
     case whereis_name(Name) of
         Pid when is_pid(Pid) ->

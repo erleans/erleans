@@ -46,6 +46,7 @@
 
 -include("erleans.hrl").
 -include_lib("kernel/include/logger.hrl").
+-include_lib("opentelemetry_api/include/otel_tracer.hrl").
 
 -define(DEFAULT_TIMEOUT, 5000).
 -define(NO_PROVIDER_ERROR, no_provider_configured).
@@ -89,29 +90,41 @@
                      handle_info/2,
                      deactivate/1]).
 
+-type etag() :: integer().
+-type deactivate_after() :: non_neg_integer() | infinity.
+
 -record(data,
        { cb_module            :: module(),
          cb_state             :: cb_state(),
 
          id                   :: term(),
-         etag                 :: integer(),
+         etag                 :: etag(),
          provider             :: term(),
          ref                  :: erleans:grain_ref(),
          create_time          :: non_neg_integer(),
-         deactivate_after     :: non_neg_integer() | infinity
+         deactivate_after     :: deactivate_after()
        }).
 
--type opts() :: #{ref    => binary(),
-                  etag   => integer(),
+-type opts() :: #{ref    => erleans:grain_ref(),
+                  etag   => etag(),
 
-                  deactivate_after => non_neg_integer() | infinity
+                  deactivate_after => deactivate_after()
                  }.
 
--export_types([opts/0]).
+-export_type([opts/0]).
 
--spec start_link(GrainRef :: erleans:grain_ref()) -> {ok, pid() | undefined} | {error, any()}.
+-spec start_link(GrainRef :: erleans:grain_ref()) -> {ok, pid() | undefined} | {error, term()}.
 start_link(GrainRef) ->
-    proc_lib:start_link(?MODULE, init, [self(), GrainRef]).
+    case proc_lib:start_link(?MODULE, init, [self(), GrainRef]) of
+        {ok, Pid} when is_pid(Pid) ->
+            {ok, Pid};
+        {ok, undefined} ->
+            {ok, undefined};
+        {error, Reason} ->
+            {error, Reason};
+        ignore ->
+            {error, notfound}
+    end.
 
 -spec call(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 call(GrainRef, Request) ->
@@ -120,20 +133,21 @@ call(GrainRef, Request) ->
 -spec call(GrainRef :: erleans:grain_ref(), Request :: term(), non_neg_integer() | infinity) -> Reply :: term().
 call(GrainRef, Request, Timeout) ->
     ReqType = req_type(),
-    do_for_ref(GrainRef, fun(_, Pid) ->
-                                 try
-                                     gen_statem:call(Pid, {otel:current_span_ctx(), ReqType, Request}, Timeout)
-                                 catch
-                                     exit:{bad_etag, _} ->
-                                         ?LOG_ERROR("at=grain_exit reason=bad_etag", []),
-                                         {exit, saved_etag_changed}
-                                 end
-                         end).
+    do_for_ref(GrainRef,
+               fun(_, Pid) ->
+                       try
+                           gen_statem:call(Pid, {?current_span_ctx, ReqType, Request}, Timeout)
+                       catch
+                           exit:{bad_etag, _} ->
+                               ?LOG_ERROR("at=grain_exit reason=bad_etag", []),
+                               {exit, saved_etag_changed}
+                       end
+               end).
 
 -spec cast(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 cast(GrainRef, Request) ->
     ReqType = req_type(),
-    do_for_ref(GrainRef, fun(_, Pid) -> gen_statem:cast(Pid, {otel:current_span_ctx(), ReqType, Request}) end).
+    do_for_ref(GrainRef, fun(_, Pid) -> gen_statem:cast(Pid, {?current_span_ctx, ReqType, Request}) end).
 
 req_type() ->
     case get(req_type) of
@@ -154,7 +168,7 @@ do_for_ref(GrainRef=#{placement := {stateless, _N}}, Fun) ->
     end;
 do_for_ref(GrainRef, Fun) ->
     try
-        case erleans_pm:whereis_name(GrainRef) of
+        case erleans_grain_registry:whereis_name(GrainRef) of
             Pid when is_pid(Pid) ->
                 Fun(noname, Pid);
             undefined ->
@@ -204,10 +218,10 @@ activate_local(GrainRef) ->
 
 %% Activate the grain on a random node in the cluster
 activate_random(GrainRef) ->
-    {ok, Members} = partisan_peer_service:members(),
-    Size = erlang:length(Members),
+    Nodes = [node() | nodes()],
+    Size = erlang:length(Nodes),
     Nth = rand:uniform(Size),
-    Node = lists:nth(Nth, Members),
+    Node = lists:nth(Nth, Nodes),
     erleans_grain_sup:start_child(Node, GrainRef).
 
 %% not used but required by the behaviour definition
@@ -228,7 +242,7 @@ init(Parent, GrainRef) ->
                 {_, Pid} when Pid =/= Self ->
                     proc_lib:init_ack(Parent, {error, {already_started, Pid}});
                 {_, _Pid} ->
-                    erleans_pm:register_name(GrainRef, Self),
+                    erleans_grain_registry:register_name(GrainRef, Self),
                     init_(Parent, GrainRef)
             end
     end.
@@ -281,7 +295,7 @@ new_state(CbModule, Id) ->
 verify_and_enter_loop(Parent, GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1) ->
     {CbData2, ETag1} = verify_etag(CbModule, Id, Provider, ETag, CbData1),
     CreateTime = maps:get(create_time, GrainOpts, erlang:system_time(seconds)),
-    DeactivateAfter = maps:get(deactivate_after, GrainOpts, erleans_config:get(deactivate_after)),
+    DeactivateAfter = deactivate_after(GrainOpts),
     Data = #data{cb_module        = CbModule,
                  cb_state         = CbData2,
 
@@ -290,7 +304,10 @@ verify_and_enter_loop(Parent, GrainRef, CbModule, Id, Provider, ETag, GrainOpts,
                  provider         = Provider,
                  ref              = GrainRef,
                  create_time      = CreateTime,
-                 deactivate_after = case DeactivateAfter of 0 -> infinity; _ -> DeactivateAfter end
+                 deactivate_after = case DeactivateAfter of
+                                        0 -> infinity;
+                                        _ -> DeactivateAfter
+                                    end
                 },
     proc_lib:init_ack(Parent, {ok, self()}),
     gen_statem:enter_loop(?MODULE, [], active, Data).
@@ -404,7 +421,7 @@ maybe_remove_worker(_) ->
 maybe_unregister(#{placement := {stateless, _}}) ->
     ok;
 maybe_unregister(GrainRef) ->
-    erleans_pm:unregister_name(GrainRef, self()),
+    erleans_grain_registry:unregister_name(GrainRef, self()),
     gproc:unreg(?stateful(GrainRef)).
 
 upd_timer(leave_timer, _) ->
@@ -509,3 +526,9 @@ span_name(Msg) when is_tuple(Msg) ->
     element(1, Msg);
 span_name(Msg) ->
     Msg.
+
+-spec deactivate_after(erleans_grain:opts()) -> deactivate_after().
+deactivate_after(#{deactivate_after := DeactivateAfter}) ->
+    DeactivateAfter;
+deactivate_after(_) ->
+    erleans_config:deactivate_after().

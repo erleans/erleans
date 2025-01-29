@@ -23,8 +23,6 @@
          handle_cast/2,
          deactivate/1]).
 
--include("erleans.hrl").
-
 placement() ->
     prefer_local.
 
