@@ -29,7 +29,6 @@ start(_StartType, _StartArgs) ->
     erleans_sup:start_link(Config).
 
 stop(_State) ->
-    %% erleans_cluster:leave(),
     ok.
 
 %% Internal functions
