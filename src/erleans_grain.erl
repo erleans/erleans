@@ -46,7 +46,6 @@
 
 -include("erleans.hrl").
 -include_lib("kernel/include/logger.hrl").
--include_lib("opentelemetry_api/include/otel_tracer.hrl").
 
 -define(DEFAULT_TIMEOUT, 5000).
 -define(NO_PROVIDER_ERROR, no_provider_configured).
@@ -136,7 +135,7 @@ call(GrainRef, Request, Timeout) ->
     do_for_ref(GrainRef,
                fun(_, Pid) ->
                        try
-                           gen_statem:call(Pid, {?current_span_ctx, ReqType, Request}, Timeout)
+                           gen_statem:call(Pid, {ReqType, Request}, Timeout)
                        catch
                            exit:{bad_etag, _} ->
                                ?LOG_ERROR("at=grain_exit reason=bad_etag", []),
@@ -147,7 +146,7 @@ call(GrainRef, Request, Timeout) ->
 -spec cast(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
 cast(GrainRef, Request) ->
     ReqType = req_type(),
-    do_for_ref(GrainRef, fun(_, Pid) -> gen_statem:cast(Pid, {?current_span_ctx, ReqType, Request}) end).
+    do_for_ref(GrainRef, fun(_, Pid) -> gen_statem:cast(Pid, {ReqType, Request}) end).
 
 req_type() ->
     case get(req_type) of
@@ -321,28 +320,18 @@ active({call, From}, {undefined, ReqType, Msg}, Data=#data{cb_module=CbModule,
                                                            cb_state=CbData,
                                                            deactivate_after=DeactivateAfter}) ->
     handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter));
-active({call, From}, {SpanCtx, ReqType, Msg}, Data=#data{cb_module=CbModule,
+active({call, From}, {_SpanCtx, ReqType, Msg}, Data=#data{cb_module=CbModule,
                                                          cb_state=CbData,
                                                          deactivate_after=DeactivateAfter}) ->
-    otel:start_span(span_name(Msg), #{parent => SpanCtx}),
-    otel:set_attribute(<<"grain_msg">>, io_lib:format("~p", [Msg])),
-    try handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter))
-    after
-        otel:end_span()
-    end;
+    handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter));
 active(cast, {undefined, ReqType, Msg}, Data=#data{cb_module=CbModule,
                                                    cb_state=CbData,
                                                    deactivate_after=DeactivateAfter}) ->
     handle_result(CbModule:handle_cast(Msg, CbData), Data, upd_timer(ReqType, DeactivateAfter));
-active(cast, {SpanCtx, ReqType, Msg}, Data=#data{cb_module=CbModule,
+active(cast, {_SpanCtx, ReqType, Msg}, Data=#data{cb_module=CbModule,
                                                  cb_state=CbData,
                                                  deactivate_after=DeactivateAfter}) ->
-    otel:start_span(span_name(Msg), #{parent => SpanCtx}),
-    otel:set_attribute(<<"grain_msg">>, io_lib:format("~p", [Msg])),
-    try handle_result(CbModule:handle_cast(Msg, CbData), Data, upd_timer(ReqType, DeactivateAfter))
-    after
-        otel:end_span()
-    end;
+    handle_result(CbModule:handle_cast(Msg, CbData), Data, upd_timer(ReqType, DeactivateAfter));
 active(state_timeout, activation_expiry, Data) ->
     {next_state, deactivating, Data};
 active(EventType, Event, Data) ->
@@ -522,10 +511,10 @@ verify_etag(_, _, _, ETag, CbData) ->
 etag(Data) ->
     erlang:phash2(Data).
 
-span_name(Msg) when is_tuple(Msg) ->
-    element(1, Msg);
-span_name(Msg) ->
-    Msg.
+%% span_name(Msg) when is_tuple(Msg) ->
+%%     element(1, Msg);
+%% span_name(Msg) ->
+%%     Msg.
 
 -spec deactivate_after(erleans_grain:opts()) -> deactivate_after().
 deactivate_after(#{deactivate_after := DeactivateAfter}) ->
