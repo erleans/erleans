@@ -316,21 +316,13 @@ callback_mode() ->
 
 active(enter, _OldState, Data=#data{deactivate_after=DeactivateAfter}) ->
     {keep_state, Data, [{state_timeout, DeactivateAfter, activation_expiry}]};
-active({call, From}, {undefined, ReqType, Msg}, Data=#data{cb_module=CbModule,
-                                                           cb_state=CbData,
-                                                           deactivate_after=DeactivateAfter}) ->
+active({call, From}, {ReqType, Msg}, Data=#data{cb_module=CbModule,
+                                                cb_state=CbData,
+                                                deactivate_after=DeactivateAfter}) ->
     handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter));
-active({call, From}, {_SpanCtx, ReqType, Msg}, Data=#data{cb_module=CbModule,
-                                                         cb_state=CbData,
-                                                         deactivate_after=DeactivateAfter}) ->
-    handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter));
-active(cast, {undefined, ReqType, Msg}, Data=#data{cb_module=CbModule,
-                                                   cb_state=CbData,
-                                                   deactivate_after=DeactivateAfter}) ->
-    handle_result(CbModule:handle_cast(Msg, CbData), Data, upd_timer(ReqType, DeactivateAfter));
-active(cast, {_SpanCtx, ReqType, Msg}, Data=#data{cb_module=CbModule,
-                                                 cb_state=CbData,
-                                                 deactivate_after=DeactivateAfter}) ->
+active(cast, {ReqType, Msg}, Data=#data{cb_module=CbModule,
+                                        cb_state=CbData,
+                                        deactivate_after=DeactivateAfter}) ->
     handle_result(CbModule:handle_cast(Msg, CbData), Data, upd_timer(ReqType, DeactivateAfter));
 active(state_timeout, activation_expiry, Data) ->
     {next_state, deactivating, Data};
@@ -343,7 +335,7 @@ deactivating(enter, _OldState, Data) ->
     timer_check(Data);
 deactivating(state_timeout, check_timers, Data) ->
     timer_check(Data);
-deactivating(_EventType, {_, refresh_timer, _}, Data) ->
+deactivating(_EventType, {refresh_timer, _}, Data) ->
     %% restart the timers
     erleans_timer:recover(),
     %% this event refreshes the time, which means we are active again
@@ -510,11 +502,6 @@ verify_etag(_, _, _, ETag, CbData) ->
 
 etag(Data) ->
     erlang:phash2(Data).
-
-%% span_name(Msg) when is_tuple(Msg) ->
-%%     element(1, Msg);
-%% span_name(Msg) ->
-%%     Msg.
 
 -spec deactivate_after(erleans_grain:opts()) -> deactivate_after().
 deactivate_after(#{deactivate_after := DeactivateAfter}) ->
