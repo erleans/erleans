@@ -39,7 +39,7 @@ jobs:
       run: rebar3 ct --cover
 
     - name: Publish Test Report
-      uses: mikepenz/action-junit-report@v2
+      uses: mikepenz/action-junit-report@v5
       if: always() # always run even if the previous step fails
       with:
         report_paths: '_build/test/logs/*/junit_report.xml'
@@ -49,7 +49,7 @@ jobs:
     - name: Covertool
       if: ${{ always() }}
       run: rebar3 covertool generate
-    - uses: codecov/codecov-action@v2
+    - uses: codecov/codecov-action@v5
       if: ${{ always() }}
       with:
         file: _build/test/covertool/pgo.covertool.xml
