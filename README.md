@@ -1,7 +1,7 @@
 Erleans
 =====
 
-[![CircleCI](https://circleci.com/gh/erleans/erleans.svg?style=svg)](https://circleci.com/gh/erleans/erleans)[![codecov](https://codecov.io/gh/erleans/erleans/branch/master/graph/badge.svg)](https://codecov.io/gh/erleans/erleans)
+[![Common Test](https://github.com/erleans/erleans/actions/workflows/ct.yml/badge.svg)](https://github.com/erleans/erleans/actions/workflows/ct.yml)[![codecov](https://codecov.io/gh/erleans/erleans/branch/main/graph/badge.svg)](https://codecov.io/gh/erleans/erleans)
 
 Erleans is a framework for building distributed applications in Erlang and Elixir based on [Microsoft Orleans](https://dotnet.github.io/orleans/).
 
