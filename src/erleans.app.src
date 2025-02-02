@@ -9,8 +9,6 @@
     sasl,
     uuid,
     gproc,
-    sbroker,
-    erlware_commons,
     opentelemetry_api
    ]},
   {modules, []},

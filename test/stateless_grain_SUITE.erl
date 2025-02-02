@@ -49,7 +49,6 @@ crash_worker(_Config) ->
     spawn_monitor(stateless_test_grain, hold, [Grain1]),
 
     ?assertMatch({ok, _}, stateless_test_grain:call_counter(Grain1)),
-    %% ?UNTIL(3 =:= length(gproc_pool:defined_workers(?pool(Grain1)))),
     ?assertMatch({ok, _}, stateless_test_grain:call_counter(Grain1)),
 
     ?assertMatch({ok, N} when N > 1, stateless_test_grain:call_counter(Grain1)),

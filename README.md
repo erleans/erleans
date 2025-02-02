@@ -7,16 +7,7 @@ Erleans is a framework for building distributed applications in Erlang and Elixi
 
 ## Requirements
 
-Rebar3 3.24.0 or above or Elixir 1.18+. 
-
-The easiest way to get the latest Rebar3 if you already have a version installed
-is `local upgrade`:
-
-``` shell
-$ rebar3 local upgrade
-...
-$ export PATH=~/.cache/rebar3/bin:$PATH
-```
+[Rebar3](http://rebar3.org/) 3.24.0 or above or [Elixir](https://elixir-lang.org/) 1.18+. 
 
 ## Components
 
@@ -33,7 +24,7 @@ Activations are registered through
 
 Stateless grains have no restriction on the number of activations and do not persist state to a database.
 
-Stateless grain activations are pooled through [sbroker](https://github.com/fishcakez/sbroker/) while being counted by a [gproc](https://github.com/uwiger/gproc/) resource counter. This allows for the use of sbroker to select an activation if available and to create a new activation if none were available immediately and the number currently activated is less than the max allowed.
+Stateless grain activations are pooled through [gproc](https://github.com/uwiger/gproc/).
 
 ### Reminders (TODO)
 
