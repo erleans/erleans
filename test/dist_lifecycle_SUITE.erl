@@ -32,7 +32,7 @@ manual_start_stop(_Config) ->
 
     ct:print("\e[32m Node ~p [OK] \e[0m", [Peer]),
 
-    erpc:call(Peer, application, load, [erleans]),
+    erpc:call(Peer, application, load, [gen_cluster]),
     erpc:call(Peer, application, set_env, [gen_cluster, type, {list, []}]),
     erpc:call(Peer, application, ensure_all_started, [erleans]),
 

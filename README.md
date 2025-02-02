@@ -7,7 +7,10 @@ Erleans is a framework for building distributed applications in Erlang and Elixi
 
 ## Requirements
 
-Rebar3 3.13.0 or above or Elixir 1.9+. Easiest way to get the latest Rebar3:
+Rebar3 3.24.0 or above or Elixir 1.18+. 
+
+The easiest way to get the latest Rebar3 if you already have a version installed
+is `local upgrade`:
 
 ``` shell
 $ rebar3 local upgrade
@@ -23,7 +26,8 @@ Stateful grains are backed by persistent storage and referenced by a primary key
 
 Grain state is persisted through a database provider with an always increasing change id or etag. If the change id or etag has been by another activation the activation attempting to save state will stop.
 
-Activations are registered through [lasp_pg](https://github.com/lasp-lang/lasp_pg.git).
+Activations are registered through
+[global](https://www.erlang.org/doc/apps/kernel/global.html) by default.
 
 ### Stateless Grains
 
@@ -37,7 +41,9 @@ Timers that are associated with a grain, meaning if a grain is not active but a 
 
 ### Observers (TODO)
 
-Processes can subscribe to grains to receive notifications for grain specific events. If a grain supports observers a group is created through `lasp_pg` that observers are added to and to which notifications are sent.
+Processes can subscribe to grains to receive notifications for grain specific
+events. If a grain supports observers a group is created through
+[pg](https://www.erlang.org/doc/apps/kernel/pg.html).
 
 ### Providers
 
@@ -141,17 +147,12 @@ iex(a@localhost)4> ErleansElixirExample.get(ref)
 1
 ```
 
-## Failure Semantics
-
 ## Contributing
 
 ### Running Tests
 
-Because the tests rely on certain configurations of apps it is easiest to run the tests with the alias `test`:
-
 ```
 $ epmd -daemon
-$ rebar3 test
+$ rebar3 ct
 ```
 
-Note that the distributed tests will only work on a node with hostname `fanon`. This will be easily avoidable in the next release of OTP but until need to figure out another work around. Running `rebar3 ci` will run all the tests but dist tests.
