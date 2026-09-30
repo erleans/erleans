@@ -21,6 +21,8 @@
 Erleans Grain registry.
 """.
 
+-include("erleans.hrl").
+
 -export([register_name/2,
          unregister_name/1,
          unregister_name/2,
@@ -68,9 +70,11 @@ send(Name, Message) ->
     end.
 
 whereis_stateless(GrainRef) ->
-    case gproc_pool:pick_worker(GrainRef) of
-        false ->
+    %% Stateless pools use claim, which pick_worker/1 does not support.
+    %% Registry lookup only locates a worker; calls claim it in erleans_stateless.
+    case gproc_pool:active_workers(?pool(GrainRef)) of
+        [] ->
             undefined;
-        Pid ->
+        [{_Name, Pid} | _] ->
             Pid
     end.

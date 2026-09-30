@@ -10,6 +10,8 @@
          end_per_suite/1,
          single_activation/1,
          concurrent_first_use/1,
+         registry_lookup/1,
+         registry_lookup_stateless_atom/1,
          crash_worker/1,
          timeout_no_workers/1]).
 
@@ -20,7 +22,8 @@
 -include("test_utils.hrl").
 
 all() ->
-    [single_activation, concurrent_first_use, crash_worker, timeout_no_workers].
+    [single_activation, concurrent_first_use, registry_lookup,
+     registry_lookup_stateless_atom, crash_worker, timeout_no_workers].
 
 init_per_suite(Config) ->
     application:load(erleans),
@@ -78,6 +81,30 @@ concurrent_first_use(_Config) ->
                           after 1000 -> ct:fail(caller_did_not_finish)
                           end
                   end, Callers).
+
+registry_lookup(_Config) ->
+    Grain = erleans:get_grain(stateless_test_grain, <<"registry-lookup">>),
+    ?assertEqual(undefined, erleans_grain_registry:whereis_name(Grain)),
+    {ok, Pid} = stateless_test_grain:pid(Grain),
+    ?assertEqual(Pid, erleans_grain_registry:whereis_name(Grain)),
+    ok = gen_statem:stop(Pid, shutdown, infinity),
+    ?assertEqual(undefined, erleans_grain_registry:whereis_name(Grain)).
+
+registry_lookup_stateless_atom(_Config) ->
+    Grain0 = erleans:get_grain(stateless_test_grain, <<"registry-lookup-stateless-atom">>),
+    Grain = Grain0#{placement => stateless},
+    ?assertEqual(undefined, erleans_grain_registry:whereis_name(Grain)),
+    ok = gproc_pool:new(?pool(Grain), claim, [{autosize, true}]),
+    try
+        ?assertEqual(undefined, erleans_grain_registry:whereis_name(Grain)),
+        gproc_pool:add_worker(?pool(Grain), self()),
+        gproc_pool:connect_worker(?pool(Grain), self()),
+        ?assertEqual(self(), erleans_grain_registry:whereis_name(Grain))
+    after
+        gproc_pool:disconnect_worker(?pool(Grain), self()),
+        gproc_pool:remove_worker(?pool(Grain), self()),
+        gproc_pool:delete(?pool(Grain))
+    end.
 
 crash_worker(_Config) ->
     Grain1 = erleans:get_grain(stateless_test_grain, <<"stateless-test-suite-grain3">>),
