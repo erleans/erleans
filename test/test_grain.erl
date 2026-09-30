@@ -23,6 +23,7 @@ A test grain that increments a counter every time it is activated.
          activate/2,
          handle_call/3,
          handle_cast/2,
+         handle_info/2,
          deactivate/1]).
 
 placement() ->
@@ -54,6 +55,8 @@ state(_) ->
 activate(_, State=#{activated_counter := Counter}) ->
     {ok, State#{activated_counter => Counter+1}, #{}}.
 
+handle_call(crash, _From, _State) ->
+    error(callback_crash);
 handle_call(call_counter, From, State=#{call_counter := CallCounter}) ->
     {ok, State#{call_counter => CallCounter+1}, [{reply, From, {ok, CallCounter}}]};
 handle_call(node, From, State=#{call_counter := CallCounter}) ->
@@ -71,7 +74,14 @@ handle_call(activated_counter, From, State=#{call_counter := CallCounter}) ->
 handle_call(save, From, State=#{call_counter := CallCounter}) ->
     {ok, State#{call_counter => CallCounter+1}, [{reply, From, ok}, save_state]}.
 
+handle_cast(crash, _State) ->
+    error(callback_crash);
 handle_cast(_, State) ->
+    {ok, State}.
+
+handle_info(crash, _State) ->
+    error(callback_crash);
+handle_info(_, State) ->
     {ok, State}.
 
 deactivate(State=#{deactivated_counter := D}) ->

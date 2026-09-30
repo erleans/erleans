@@ -380,12 +380,19 @@ terminate(?NO_PROVIDER_ERROR, _State, #data{cb_module=CbModule,
     %% We do not want to call the deactivate callback here because this
     %% is not a deactivation, it is a hard crash.
     ok;
-terminate(Reason, _State, Data=#data{ref=GrainRef}) ->
+terminate(Reason, _State, Data=#data{ref=GrainRef})
+  when Reason =:= shutdown;
+       tuple_size(Reason) =:= 2, element(1, Reason) =:= shutdown ->
     maybe_remove_worker(GrainRef),
     ?LOG_INFO("at=terminate reason=~p", [Reason]),
     %% supervisor is terminating, node is probably shutting down.
     %% deactivate the grain so it can clean up and save if needed
     _ = finalize_and_stop(Data),
+    ok;
+terminate(Reason, _State, #data{ref=GrainRef}) ->
+    maybe_remove_worker(GrainRef),
+    ?LOG_INFO("at=terminate reason=~p", [Reason]),
+    %% Unhandled errors must not invoke deactivation or save state.
     ok.
 
 %% Internal functions

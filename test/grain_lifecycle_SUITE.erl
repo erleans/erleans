@@ -20,6 +20,8 @@
          request_types/1,
          exit_notfound/1,
          existing_global_registration/1,
+         callback_crash_does_not_save/1,
+         shutdown_saves_state/1,
          local_activations/1]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -38,7 +40,8 @@ groups() ->
                                no_provider_grain, exit_notfound]},
      {deactivate_after_60, [], [bad_etag_save]},
      {deactivate_after_30, [], [request_types]},
-     {deactivate_after_50000, [], [local_activations, existing_global_registration]}].
+     {deactivate_after_50000, [], [local_activations, existing_global_registration,
+                                  callback_crash_does_not_save, shutdown_saves_state]}].
 
 init_per_suite(Config) ->
     Config.
@@ -211,6 +214,43 @@ exit_notfound(_Config) ->
     %% from `erleans_grain`
     GrainRef = erleans:get_grain(notfound_grain, <<"notfound-grain-1">>),
     ?assertExit({noproc, notfound}, notfound_grain:anything(GrainRef)).
+
+callback_crash_does_not_save(_Config) ->
+    lists:foreach(
+      fun(Kind) ->
+              Grain = #{id := Id, provider := {Provider, Name}} =
+                  erleans:get_grain(test_grain, {callback_crash, Kind}),
+              ok = test_grain:save(Grain),
+              Saved = Provider:read(test_grain, Name, Id),
+              ?assertMatch({ok, #{deactivated_counter := 0}, _}, Saved),
+              {ok, _} = test_grain:call_counter(Grain),
+              Pid = erleans_grain_registry:whereis_name(Grain),
+              Monitor = monitor(process, Pid),
+              case Kind of
+                  call ->
+                      ?assertExit({{callback_crash, _}, _}, erleans_grain:call(Grain, crash));
+                  cast ->
+                      erleans_grain:cast(Grain, crash);
+                  info ->
+                      Pid ! crash
+              end,
+              receive {'DOWN', Monitor, process, Pid, {callback_crash, _}} -> ok
+              after 1000 -> ct:fail(grain_did_not_crash)
+              end,
+              ?assertEqual(Saved, Provider:read(test_grain, Name, Id))
+      end, [call, cast, info]).
+
+shutdown_saves_state(_Config) ->
+    lists:foreach(
+      fun(Reason) ->
+              Grain = #{id := Id, provider := {Provider, Name}} =
+                  erleans:get_grain(test_grain, {shutdown_saves_state, Reason}),
+              {ok, 0} = test_grain:call_counter(Grain),
+              Pid = erleans_grain_registry:whereis_name(Grain),
+              ok = gen_statem:stop(Pid, Reason, infinity),
+              ?assertMatch({ok, #{deactivated_counter := 1, call_counter := 1}, _},
+                           Provider:read(test_grain, Name, Id))
+      end, [shutdown, {shutdown, test}]).
 
 existing_global_registration(_Config) ->
     Grain = erleans:get_grain(test_grain, <<"existing-global-registration">>),
