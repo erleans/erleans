@@ -60,12 +60,7 @@ whereis_name(GrainRef=#{placement := stateless}) ->
 whereis_name(GrainRef=#{placement := {stateless, _}}) ->
     whereis_stateless(GrainRef);
 whereis_name(GrainRef) ->
-    case gproc:where(?stateful(GrainRef)) of
-        Pid when is_pid(Pid) ->
-            Pid;
-        _ ->
-            global:whereis_name(GrainRef)
-    end.
+    global:whereis_name(GrainRef).
 
 -spec send(Name :: erleans:grain_ref(), Message :: term()) -> term().
 send(Name, Message) ->

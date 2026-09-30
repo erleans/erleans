@@ -234,15 +234,17 @@ init(Parent, GrainRef) ->
         #{placement := {stateless, _N}} ->
             init_(Parent, GrainRef);
         _->
-            Self = self(),
-            %% use a node local gproc registration to ensure no duplicates can
-            %% be made on a single node.
-            case gproc:reg_or_locate(?stateful(GrainRef), Self) of
-                {_, Pid} when Pid =/= Self ->
-                    proc_lib:init_ack(Parent, {error, {already_started, Pid}});
-                {_, _Pid} ->
-                    erleans_grain_registry:register_name(GrainRef, Self),
-                    init_(Parent, GrainRef)
+            case erleans_grain_registry:register_name(GrainRef, self()) of
+                yes ->
+                    init_(Parent, GrainRef);
+                no ->
+                    case erleans_grain_registry:whereis_name(GrainRef) of
+                        Pid when is_pid(Pid) ->
+                            proc_lib:init_ack(Parent, {error, {already_started, Pid}});
+                        undefined ->
+                            %% The owner exited between registration and lookup.
+                            init(Parent, GrainRef)
+                    end
             end
     end.
 
@@ -402,8 +404,7 @@ maybe_remove_worker(_) ->
 maybe_unregister(#{placement := {stateless, _}}) ->
     ok;
 maybe_unregister(GrainRef) ->
-    erleans_grain_registry:unregister_name(GrainRef, self()),
-    gproc:unreg(?stateful(GrainRef)).
+    erleans_grain_registry:unregister_name(GrainRef, self()).
 
 upd_timer(leave_timer, _) ->
     [];

@@ -25,7 +25,7 @@ groups() ->
                                no_provider_grain, exit_notfound]},
      {deactivate_after_60, [], [bad_etag_save]},
      {deactivate_after_30, [], [request_types]},
-     {deactivate_after_50000, [], [local_activations]}].
+     {deactivate_after_50000, [], [local_activations, existing_global_registration]}].
 
 init_per_suite(Config) ->
     Config.
@@ -197,6 +197,18 @@ exit_notfound(_Config) ->
     %% from `erleans_grain`
     GrainRef = erleans:get_grain(notfound_grain, <<"notfound-grain-1">>),
     ?assertExit({noproc, notfound}, notfound_grain:anything(GrainRef)).
+
+existing_global_registration(_Config) ->
+    Grain = erleans:get_grain(test_grain, <<"existing-global-registration">>),
+    Owner = self(),
+    yes = global:register_name(Grain, Owner),
+    try
+        ?assertEqual({error, {already_started, Owner}},
+                     erleans_grain_sup:start_child(Grain)),
+        ?assertEqual(Owner, erleans_grain_registry:whereis_name(Grain))
+    after
+        global:unregister_name(Grain)
+    end.
 
 %% spawn a bunch of procs making calls to the same unactivated grain
 %% checks that the same local single activation is used for each request
