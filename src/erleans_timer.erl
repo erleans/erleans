@@ -147,7 +147,11 @@ recover() ->
         undefined ->
             ok;
         Map when is_map(Map) ->
-            NewMap = maps:fold(fun(_Pid, Timer, Acc) ->
+            NewMap = maps:fold(fun(_Pid, #timer{period = never}, Acc) ->
+                                       %% One-shots must not run again, even if their
+                                       %% callback is still finishing deactivation.
+                                       Acc;
+                                  (_Pid, Timer, Acc) ->
                                        NewPid = start_timer(Timer#timer.period, Timer),
                                        Acc#{NewPid => Timer}
                                end, #{}, Map),

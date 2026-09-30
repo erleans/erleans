@@ -75,6 +75,9 @@ activate(_, State=#{}) ->
 
 handle_call(node, From, State) ->
     {ok, State, [{reply, From, {ok, node()}}]};
+handle_call({start_timer, Callback, Start, Period}, From, State) ->
+    Result = erleans_timer:start(Callback, undefined, Start, Period),
+    {ok, State, [{reply, From, Result}]};
 
 handle_call(clear, From, State = #{acc := Acc}) ->
     {ok, State#{acc => []}, [{reply, From, {ok, Acc}}]};

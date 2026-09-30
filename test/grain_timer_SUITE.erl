@@ -14,6 +14,7 @@
          single_timer/1,
          multiple_timers/1,
          crashy_timer/1,
+         recover_with_one_shots/1,
          timer_shutdown/1]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -26,7 +27,7 @@ all() ->
      {group, deactivate_after_30}].
 
 groups() ->
-    [{defaults, [], [single_timer, multiple_timers, crashy_timer]},
+    [{defaults, [], [single_timer, multiple_timers, crashy_timer, recover_with_one_shots]},
      {deactivate_after_30, [], [timer_shutdown]}].
 
 init_per_suite(Config) ->
@@ -104,6 +105,47 @@ crashy_timer(_Config) ->
     ?assertEqual([a, a, a, a, a, {erleans_timer_error,exit,boom}],
                  lists:reverse(Acc)),
     ok.
+
+recover_with_one_shots(_Config) ->
+    Grain = erleans:get_grain(?g, <<"recover-with-one-shots">>),
+    Test = self(),
+    Completed = fun(_, _) -> Test ! completed end,
+    {ok, CompletedPid} = erleans_grain:call(Grain, {start_timer, Completed, 0, never}),
+    true = is_pid(CompletedPid),
+    CompletedMonitor = monitor(process, CompletedPid),
+    receive completed -> ok after 1000 -> ct:fail(one_shot_not_called) end,
+    receive {'DOWN', CompletedMonitor, process, CompletedPid, _} -> ok
+    after 1000 -> ct:fail(one_shot_not_finished)
+    end,
+
+    InFlight = fun(_, _) ->
+                       Test ! {in_flight, self()},
+                       receive finish -> ok end
+               end,
+    {ok, InFlightPid} = erleans_grain:call(Grain, {start_timer, InFlight, 0, never}),
+    true = is_pid(InFlightPid),
+    InFlightMonitor = monitor(process, InFlightPid),
+    receive {in_flight, InFlightPid} -> ok after 1000 -> ct:fail(one_shot_not_started) end,
+    Periodic = fun(_, _) -> Test ! periodic end,
+    {ok, _} = erleans_grain:call(Grain, {start_timer, Periodic, 60000, 10}),
+
+    Pid = erleans_grain_registry:whereis_name(Grain),
+    ok = ?g:stop(Pid),
+    ?assertMatch({deactivating, _}, sys:get_state(Pid)),
+    ?assertEqual({ok, node()}, ?g:node(Pid)),
+    receive periodic -> ok after 1000 -> ct:fail(periodic_timer_not_recovered) end,
+    InFlightPid ! finish,
+    receive {'DOWN', InFlightMonitor, process, InFlightPid, normal} -> ok
+    after 1000 -> ct:fail(one_shot_not_finished)
+    end,
+    receive
+        completed -> ct:fail(completed_one_shot_restarted);
+        {in_flight, _} -> ct:fail(in_flight_one_shot_restarted)
+    after 50 -> ok
+    end,
+    ?assertEqual(Pid, erleans_grain_registry:whereis_name(Grain)),
+    ?assertEqual({ok, node()}, ?g:node(Pid)),
+    ok = ?g:cancel_one_timer(Pid).
 
 timer_shutdown(_Config) ->
     Grain = erleans:get_grain(timer_test_grain, <<"shutdown-timer-test-grain">>),
