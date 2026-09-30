@@ -41,7 +41,11 @@ pick_grain(GrainRef = #{placement := {stateless, N}}, Fun) ->
     catch
         error:badarg ->
             %% no pool started for these grains, let's start one
-            gproc_pool:new(?pool(GrainRef), claim, [{autosize, true}]),
+            try gproc_pool:new(?pool(GrainRef), claim, [{autosize, true}])
+            catch
+                %% Another first caller may have created the pool already.
+                error:exists -> ok
+            end,
             %% does not support going over N during bursts
             %% TODO: revisit burst support
             %% spawn a new activation and use it
