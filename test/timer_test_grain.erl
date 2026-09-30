@@ -1,11 +1,13 @@
 %%% ---------------------------------------------------------------------------
 %%% %%% @copyright 2017 Space-Time Insight <tristan.sloughter@spacetimeinsight.com>
 %%%
-%%% @doc A test grain that sets up some timers and then accumulates
-%%% the results of messages sent to it.
-%%% @end
 %%% ---------------------------------------------------------------------------
 -module(timer_test_grain).
+
+-moduledoc """
+A test grain that sets up some timers and then accumulates
+the results of messages sent to it.
+""".
 
 -behaviour(erleans_grain).
 

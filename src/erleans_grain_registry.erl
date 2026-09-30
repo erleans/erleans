@@ -15,21 +15,17 @@
 %%%----------------------------------------------------------------------------
 
 %%% ---------------------------------------------------------------------------
-%%% @doc Erleans Grain registry.
-%%% @end
-%%% ---------------------------------------------------------------------------
 -module(erleans_grain_registry).
+
+-moduledoc """
+Erleans Grain registry.
+""".
 
 -export([register_name/2,
          unregister_name/1,
          unregister_name/2,
          whereis_name/1,
          send/2]).
-
--include("erleans.hrl").
-
--dialyzer({nowarn_function, register_name/2}).
--dialyzer({nowarn_function, unregister_name/2}).
 
 -callback register_name(erleans:grain_ref(), pid()) -> yes | no.
 -callback unregister_name(erleans:grain_ref()) -> ok.

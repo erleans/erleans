@@ -2,10 +2,12 @@
 %%% @author Tristan Sloughter <tristan.sloughter@spacetimeinsight.com>
 %%% @copyright 2016 Space-Time Insight <tristan.sloughter@spacetimeinsight.com>
 %%%
-%%% @doc A test grain that increments a counter every time it is activated.
-%%% @end
 %%% ---------------------------------------------------------------------------
 -module(stateless_test_grain).
+
+-moduledoc """
+A test grain that increments a counter every time it is activated.
+""".
 
 -behaviour(erleans_grain).
 
@@ -23,8 +25,6 @@
          handle_call/3,
          handle_cast/2,
          deactivate/1]).
-
--include("erleans.hrl").
 
 placement() ->
     {stateless, 3}.

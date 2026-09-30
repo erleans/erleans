@@ -2,10 +2,12 @@
 %%% @author Tristan Sloughter <tristan.sloughter@spacetimeinsight.com>
 %%% @copyright 2016 Space-Time Insight <tristan.sloughter@spacetimeinsight.com>
 %%%
-%%% @doc A test grain that increments a counter every time it is activated.
-%%% @end
 %%% ---------------------------------------------------------------------------
 -module(test_grain).
+
+-moduledoc """
+A test grain that increments a counter every time it is activated.
+""".
 
 -behaviour(erleans_grain).
 

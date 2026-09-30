@@ -13,11 +13,13 @@
 %%% See the License for the specific language governing permissions and
 %%% limitations under the License.
 %%%
-%% @doc erleans providers supervisor.
-%% @end
 %%%-------------------------------------------------------------------
 
 -module(erleans_providers_sup).
+
+-moduledoc """
+erleans providers supervisor.
+""".
 
 -behaviour(supervisor).
 

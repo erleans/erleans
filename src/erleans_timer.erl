@@ -15,25 +15,25 @@
 %%%----------------------------------------------------------------------------
 
 %%% ---------------------------------------------------------------------------
-%%% @doc Timers are simple periodic or aperiodic timers that will
-%%% invoke a callback when they fire.  While they do not have direct
-%%% access to grain state or identity, their fun can contain anything,
-%%% so they can easily send a message to a grain.
-%%%
-%%% `cancel_timer/0' is supplied as a helper for simple situations
-%%% where a grain only has one timer going.  In the case that there
-%%% many timers going at once, `cancel_timer/1' must be used
-%%% explicitly on each.
-%%%
-%%% A note about timers and shutdown.  Following Orleans, calls made
-%%% from timers do not extend the lease time on a grain and a long
-%%% call made in a timer callback can extend the life of the grain.
-%%% For that reason, timers can miss ticks and tick too quickly around
-%%% the lease time of a grain.
-%%%
-%%% @end
-%%% ---------------------------------------------------------------------------
 -module(erleans_timer).
+
+-moduledoc """
+Timers are simple periodic or aperiodic timers that will
+invoke a callback when they fire.  While they do not have direct
+access to grain state or identity, their fun can contain anything,
+so they can easily send a message to a grain.
+
+`cancel_timer/0` is supplied as a helper for simple situations
+where a grain only has one timer going.  In the case that there
+many timers going at once, `cancel_timer/1` must be used
+explicitly on each.
+
+A note about timers and shutdown.  Following Orleans, calls made
+from timers do not extend the lease time on a grain and a long
+call made in a timer callback can extend the life of the grain.
+For that reason, timers can miss ticks and tick too quickly around
+the lease time of a grain.
+""".
 
 -include("erleans_timer.hrl").
 

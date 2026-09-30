@@ -42,9 +42,7 @@ init_providers() ->
             persistent_term:put({?MODULE, default_provider}, DefaultProvider),
             Providers = erleans_config:get(providers, #{}),
             ConfiguredProviders =
-                maps:map(fun(ProviderName, ProviderConfig) ->
-                                 start_and_set_provider(ProviderName, ProviderConfig)
-                         end, Providers),
+                maps:map(fun start_and_set_provider/2, Providers),
             persistent_term:put({?MODULE, configured_providers}, ConfiguredProviders)
     end.
 

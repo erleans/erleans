@@ -2,17 +2,22 @@
 %%% @author Tristan Sloughter <tristan.sloughter@spacetimeinsight.com>
 %%% @copyright 2016 Space-Time Insight <tristan.sloughter@spacetimeinsight.com>
 %%%
-%%% @doc
-%%% @end
 %%% ---------------------------------------------------------------------------
 -module(grain_timer_SUITE).
 
--compile(export_all).
+-export([all/0,
+         groups/0,
+         init_per_suite/1,
+         end_per_suite/1,
+         init_per_group/2,
+         end_per_group/2,
+         single_timer/1,
+         multiple_timers/1,
+         crashy_timer/1,
+         timer_shutdown/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
-
--include("test_utils.hrl").
 
 -define(g, timer_test_grain).
 
@@ -58,7 +63,9 @@ single_timer(_Config) ->
     ?assertEqual([a, a, a, a, a], Acc1),
     ?g:start_one_timer(Grain),
     timer:sleep(50), % acc should be [a, a, a, a, a]
-    Pid = erleans_grain_registry:whereis_name(Grain),
+    Pid = case erleans_grain_registry:whereis_name(Grain) of
+              GrainPid when is_pid(GrainPid) -> GrainPid
+          end,
     ok = ?g:stop(Grain), % but should clear when it stops
     (fun Loop() ->
              case is_process_alive(Pid) of

@@ -2,12 +2,25 @@
 %%% @author Tristan Sloughter <tristan.sloughter@spacetimeinsight.com>
 %%% @copyright 2016 Space-Time Insight <tristan.sloughter@spacetimeinsight.com>
 %%%
-%%% @doc
-%%% @end
 %%% ---------------------------------------------------------------------------
 -module(grain_lifecycle_SUITE).
 
--compile(export_all).
+-export([all/0,
+         groups/0,
+         init_per_suite/1,
+         end_per_suite/1,
+         init_per_group/2,
+         end_per_group/2,
+         init_per_testcase/2,
+         end_per_testcase/2,
+         manual_start_stop/1,
+         bad_etag_save/1,
+         ephemeral_state/1,
+         no_provider_grain/1,
+         request_types/1,
+         exit_notfound/1,
+         existing_global_registration/1,
+         local_activations/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -180,14 +193,15 @@ request_types(_Config) ->
                       put(req_type, leave_timer),
                       [begin
                            timer:sleep(6),
-                           _Ct = (catch test_grain:activated_counter(GrainPid))
+                           try test_grain:activated_counter(GrainPid)
+                           catch
+                               exit:_ -> ok
+                           end
                        end || _ <- lists:seq(1,10)]  % ~60 ms
               end),
     timer:sleep(60),
 
-    %% this should have died at some point because of a badmatch after the lease expires
-    %% ?assertEqual(false, is_process_alive(Pinger)),  % can't get this to behave
-    ?assertMatch({'EXIT', _}, (catch test_grain:activated_counter(GrainPid))),
+    ?assertExit(_, test_grain:activated_counter(GrainPid)),
 
     ok.
 

@@ -15,19 +15,20 @@
 %%%----------------------------------------------------------------------------
 
 %%% ---------------------------------------------------------------------------
-%%% @doc The Grain behavior provides a process that handles registering
-%%%      the grain in the cluster, loading grain state and saving grain state.
-%%%
-%%%      If a provider is specified in the configuration the corresponding ref
-%%%      state is loaded using the provider configured data store.
-%%%
-%%%      A single_activation grain will attempt to have only one living process in the
-%%%      cluster at any given time, while a stateless grain is meant as a read
-%%%      only cache process and may spawn many instances for the same ref
-%%%      depending on incoming requests and configuration.
-%%% @end
-%%% ---------------------------------------------------------------------------
 -module(erleans_grain).
+
+-moduledoc """
+The Grain behavior provides a process that handles registering
+the grain in the cluster, loading grain state and saving grain state.
+
+If a provider is specified in the configuration the corresponding ref
+state is loaded using the provider configured data store.
+
+A single_activation grain will attempt to have only one living process in the
+cluster at any given time, while a stateless grain is meant as a read
+only cache process and may spawn many instances for the same ref
+depending on incoming requests and configuration.
+""".
 
 -behaviour(gen_statem).
 

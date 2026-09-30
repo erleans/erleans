@@ -2,10 +2,12 @@
 %%% @author Tristan Sloughter <tristan.sloughter@spacetimeinsight.com>
 %%% @copyright 2016 Space-Time Insight <tristan.sloughter@spacetimeinsight.com>
 %%%
-%%% @doc A grain that doesn't use any storage provider.
-%%% @end
 %%% ---------------------------------------------------------------------------
 -module(no_provider_test_grain).
+
+-moduledoc """
+A grain that doesn't use any storage provider.
+""".
 
 -behaviour(erleans_grain).
 
@@ -17,8 +19,6 @@
          handle_call/3,
          handle_cast/2,
          deactivate/1]).
-
--include("erleans.hrl").
 
 placement() ->
     prefer_local.

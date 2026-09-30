@@ -15,21 +15,17 @@
 %%%----------------------------------------------------------------------------
 
 %%% ---------------------------------------------------------------------------
-%%% @doc Erleans Grain registry backed by Erlang's global.
-%%% @end
-%%% ---------------------------------------------------------------------------
 -module(erleans_grain_registry_global).
+
+-moduledoc """
+Erleans Grain registry backed by Erlang's global.
+""".
 
 -export([register_name/2,
          unregister_name/1,
          unregister_name/2,
          whereis_name/1,
          send/2]).
-
--include("erleans.hrl").
-
--dialyzer({nowarn_function, register_name/2}).
--dialyzer({nowarn_function, unregister_name/2}).
 
 -spec register_name(Name :: erleans:grain_ref(), Pid :: pid()) -> yes | no.
 register_name(Name, Pid) when is_pid(Pid) ->

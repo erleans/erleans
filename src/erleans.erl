@@ -13,8 +13,6 @@
 %%% See the License for the specific language governing permissions and
 %%% limitations under the License.
 %%%
-%%% @doc
-%%% @end
 %%% ---------------------------------------------------------------------------
 -module(erleans).
 
@@ -34,13 +32,6 @@
                            stateless |
                            {stateless, integer()} |
                            system_grain. %% | load
-
--define(IS_GRAIN_PLACEMENT(X),
-        X =:= random orelse
-        X =:= prefer_local orelse
-        X =:= stateless orelse
-        element(1, X) =:= stateless orelse
-        X =:= system_grain).
 
 -type etag() :: integer().
 
@@ -94,6 +85,10 @@ placement(Module) ->
     case erleans_utils:fun_or_default(Module, placement, ?DEFAULT_PLACEMENT) of
         stateless ->
             {stateless, erleans_config:get(default_stateless_max, 5)};
-        Placement when ?IS_GRAIN_PLACEMENT(Placement) ->
+        Placement = {stateless, Max} when is_integer(Max) ->
+            Placement;
+        Placement when Placement =:= random;
+                       Placement =:= prefer_local;
+                       Placement =:= system_grain ->
             Placement
     end.

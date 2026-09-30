@@ -2,13 +2,13 @@
 %%% @author Tristan Sloughter <tristan.sloughter@spacetimeinsight.com>
 %%% @copyright 2016 Space-Time Insight <tristan.sloughter@spacetimeinsight.com>
 %%%
-%%% @doc
-%%% @end
 %%% ---------------------------------------------------------------------------
 -module(dist_lifecycle_SUITE).
 
--compile(nowarn_export_all).
--compile(export_all).
+-export([all/0,
+         init_per_suite/1,
+         end_per_suite/1,
+         manual_start_stop/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -28,7 +28,10 @@ manual_start_stop(_Config) ->
     LocalNode = node(),
 
     Paths = ["-config", "../../../../test/sys.config", "-pa" | code:get_path()],
-    {ok, PeerPid, Peer} = ?CT_PEER(Paths),
+    {PeerPid, Peer} = case ?CT_PEER(Paths) of
+                         {ok, Pid, Node} when is_pid(Pid) ->
+                             {Pid, Node}
+                     end,
 
     ct:print("\e[32m Node ~p [OK] \e[0m", [Peer]),
 

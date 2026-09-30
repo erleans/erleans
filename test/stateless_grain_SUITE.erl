@@ -2,12 +2,15 @@
 %%% @author Tristan Sloughter <tristan.sloughter@spacetimeinsight.com>
 %%% @copyright 2016 Space-Time Insight <tristan.sloughter@spacetimeinsight.com>
 %%%
-%%% @doc
-%%% @end
 %%% ---------------------------------------------------------------------------
 -module(stateless_grain_SUITE).
 
--compile(export_all).
+-export([all/0,
+         init_per_suite/1,
+         end_per_suite/1,
+         single_activation/1,
+         crash_worker/1,
+         timeout_no_workers/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
