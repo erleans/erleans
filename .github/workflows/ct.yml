@@ -14,9 +14,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        otp_version: ['27']
-        rebar3_version: ['3.24']
-        os: [ubuntu-22.04]
+        otp_version: ['29']
+        rebar3_version: ['3.25.1']
+        os: [ubuntu-24.04]
     env:
       OTP_VERSION: ${{ matrix.otp_version }}
     steps:
@@ -25,14 +25,28 @@ jobs:
       with:
         otp-version: ${{ matrix.otp_version }}
         rebar3-version: ${{ matrix.rebar3_version }}
+    - name: Install ELP
+      env:
+        ELP_VERSION: '2026-08-10'
+        ELP_SHA256: '711ea859b9c998eb990f9e647e03029c3aa1dfb61b177e6de5bf95c69b62695b'
+      run: |
+        archive="elp-linux-x86_64-unknown-linux-gnu-otp-${OTP_VERSION}.tar.gz"
+        curl --fail --location --retry 3 \
+          "https://github.com/WhatsApp/erlang-language-platform/releases/download/${ELP_VERSION}/${archive}" \
+          --output "${RUNNER_TEMP}/${archive}"
+        echo "${ELP_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum --check
+        mkdir -p "${RUNNER_TEMP}/elp"
+        tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}/elp"
+        echo "${RUNNER_TEMP}/elp" >> "$GITHUB_PATH"
+        "${RUNNER_TEMP}/elp/elp" version
     - uses: actions/cache@v4
       name: Cache
       with:
         path: |
           _build
-        key: ${{ runner.os }}-build-${{ matrix.otp_version }}-${{ hashFiles(format('rebar.lock')) }}-1
+        key: ${{ runner.os }}-build-${{ matrix.otp_version }}-${{ hashFiles('rebar.lock') }}-1
         restore-keys: |
-          ${{ runner.os }}-build-${{ matrix.otp_version }}-${{ hashFiles(format('rebar.lock')) }}-1
+          ${{ runner.os }}-build-${{ matrix.otp_version }}-${{ hashFiles('rebar.lock') }}-1
     - name: Compile
       run: rebar3 compile
     - name: Common Test tests
@@ -46,13 +60,17 @@ jobs:
 
     - name: XRef
       run: rebar3 xref
+    - name: ELP lint
+      run: elp lint --project . --as test --rebar
+    - name: Eqwalizer
+      run: elp eqwalize-all --project . --as test --rebar --bail-on-error
     - name: Covertool
       if: ${{ always() }}
       run: rebar3 covertool generate
     - uses: codecov/codecov-action@v5
       if: ${{ always() }}
       with:
-        file: _build/test/covertool/pgo.covertool.xml
+        files: _build/test/covertool/erleans.covertool.xml
         env_vars: OTP_VERSION
 
 
@@ -61,9 +79,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        otp_version: ['27']
-        rebar3_version: ['3.24']
-        os: [ubuntu-22.04]
+        otp_version: ['29']
+        rebar3_version: ['3.25.1']
+        os: [ubuntu-24.04]
     steps:
     - uses: actions/checkout@v4
     - uses: erlef/setup-beam@v1
@@ -75,9 +93,9 @@ jobs:
       with:
         path: |
           _build
-        key: ${{ runner.os }}-build-${{ matrix.otp_version }}-${{ hashFiles(format('rebar.lock')) }}-1
+        key: ${{ runner.os }}-build-${{ matrix.otp_version }}-${{ hashFiles('rebar.lock') }}-1
         restore-keys: |
-          ${{ runner.os }}-build-${{ matrix.otp_version }}-${{ hashFiles(format('rebar.lock')) }}-1
+          ${{ runner.os }}-build-${{ matrix.otp_version }}-${{ hashFiles('rebar.lock') }}-1
     - name: Compile
       run: rebar3 compile
     - name: Dialyzer
