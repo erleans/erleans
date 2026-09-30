@@ -33,7 +33,9 @@
                            {stateless, integer()} |
                            system_grain. %% | load
 
--type etag() :: integer().
+%% An opaque concurrency token owned by the storage provider.
+%% undefined is reserved for state which has not been read or inserted.
+-type etag() :: term().
 
 -export_type([grain_ref/0,
               grain_placement/0,

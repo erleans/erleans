@@ -90,7 +90,7 @@ depending on incoming requests and configuration.
                      handle_info/2,
                      deactivate/1]).
 
--type etag() :: integer().
+-type etag() :: erleans:etag().
 -type deactivate_after() :: non_neg_integer() | infinity.
 
 -record(data,
@@ -256,8 +256,10 @@ init_(Parent, GrainRef=#{id := Id,
                               case ProviderModule:read(CbModule, ProviderName, Id) of
                                   {ok, SavedData, E} ->
                                       {SavedData, E};
-                                  _ ->
-                                      new_state(CbModule, Id)
+                                  {error, not_found} ->
+                                      new_state(CbModule, Id);
+                                  {error, ReadReason} ->
+                                      exit(ReadReason)
                               end;
                          {ok, undefined} ->
                              Provider = undefined,
@@ -486,31 +488,30 @@ update_state(CbData, #data{id=Id,
 
 update_state(_CbModule, undefined, _Id, _CbData, _ETag) ->
     exit(?NO_PROVIDER_ERROR);
-update_state(CbModule, Provider, Id, CbData, ETag) ->
-    NewETag = etag(CbData),
-    update_state(CbModule, Provider, Id, CbData, ETag, NewETag).
-
-update_state(CbModule, {Provider, ProviderName}, Id, Data, ETag, NewETag) ->
-    case Provider:update(CbModule, ProviderName, Id, Data, ETag, NewETag) of
-        ok ->
+update_state(CbModule, {Provider, ProviderName}, Id, Data, ETag) ->
+    case Provider:update(CbModule, ProviderName, Id, Data, ETag) of
+        {ok, NewETag} ->
             NewETag;
         {error, Reason} ->
             exit(Reason)
     end.
 
 verify_etag(CbModule, Id, {Provider, ProviderName}, undefined, D={_, CbData}) ->
-    ETag = etag(CbData),
-    Provider:insert(CbModule, ProviderName, Id, CbData, ETag),
+    ETag = insert_state(CbModule, Provider, ProviderName, Id, CbData),
     {D, ETag};
 verify_etag(CbModule, Id, {Provider, ProviderName}, undefined, CbData) ->
-    ETag = etag(CbData),
-    Provider:insert(CbModule, ProviderName, Id, CbData, ETag),
+    ETag = insert_state(CbModule, Provider, ProviderName, Id, CbData),
     {CbData, ETag};
 verify_etag(_, _, _, ETag, CbData) ->
     {CbData, ETag}.
 
-etag(Data) ->
-    erlang:phash2(Data).
+insert_state(CbModule, Provider, ProviderName, Id, CbData) ->
+    case Provider:insert(CbModule, ProviderName, Id, CbData) of
+        {ok, ETag} ->
+            ETag;
+        {error, Reason} ->
+            exit(Reason)
+    end.
 
 -spec deactivate_after(erleans_grain:opts()) -> deactivate_after().
 deactivate_after(#{deactivate_after := DeactivateAfter}) ->

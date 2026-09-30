@@ -18,34 +18,34 @@
 
 -export([start_link/2]).
 
+%% Providers generate ETags and atomically check them when writing. A successful
+%% write returns a fresh token even when the payload has not changed. undefined
+%% is reserved for a missing row and must not be returned as a stored ETag.
+-type write_result() :: {ok, erleans:etag()} | {error, term()}.
+
 -callback start_link(ProviderName :: atom(), Args :: list()) -> {ok, pid()}.
 
 -callback all(Type :: module(), ProviderName :: atom()) -> {ok, [any()]} | {error, any()}.
 
 -callback read(Type :: module(), ProviderName :: atom(), Id :: term()) ->
     {ok, State :: any(), ETag :: erleans:etag()} |
-    {error, not_found}.
+    {error, Reason :: term()}.
 
 -callback read_by_hash(Type :: module(), ProviderName :: atom(), Hash :: integer()) ->
     {ok,  [{GrainRef :: erleans:grain_ref(), Type :: module(), ETag :: erleans:etag(), State :: any()}]} |
     {error, not_found}.
 
--callback insert(Type :: module(), ProviderName :: atom(), Id :: any(), State :: any(), ETag :: erleans:etag()) -> ok.
+%% Insert only if no row with this type and id exists; otherwise return bad_etag.
+-callback insert(Type :: module(), ProviderName :: atom(), Id :: any(), State :: any()) -> write_result().
 
 -callback insert(Type :: module(), ProviderName :: atom(), Id :: any(), Hash :: integer(),
-                 State :: any(), ETag :: erleans:etag()) -> ok.
+                 State :: any()) -> write_result().
 
 -callback update(Type :: module(), ProviderName :: atom(), Id :: any(), State :: any(),
-                  ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
-    ok |
-    {error, {bad_etag, erleans:etag(), erleans:etag()}} |
-    {error, not_found}.
+                  ETag :: erleans:etag()) -> write_result().
 
 -callback update(Type :: module(), ProviderName :: atom(), Id :: any(), Hash :: integer(),
-                  State :: any(), ETag :: erleans:etag(), NewETag :: erleans:etag()) ->
-    ok |
-    {error, {bad_etag, erleans:etag(), erleans:etag()}} |
-    {error, not_found}.
+                  State :: any(), ETag :: erleans:etag()) -> write_result().
 
 start_link(Name, #{module := Module,
                    args   := Args}) ->

@@ -15,7 +15,7 @@ Erleans is a framework for building distributed applications in Erlang and Elixi
 
 Stateful grains are backed by persistent storage and referenced by a primary key set by the grain. An activation of a grain is a single Erlang process in on an Erlang node (silo) in an Erlang cluster. Activation placement is handled by Erleans and communication is over standard Erlang distribution. If a grain is sent a message and does not have a current activation one is spawned.
 
-Grain state is persisted through a database provider with an always increasing change id or etag. If the change id or etag has been by another activation the activation attempting to save state will stop.
+Grain state is persisted through a storage provider which owns its change id or ETag. The grain treats the ETag as an opaque token and passes it back on each save. Providers must atomically reject stale ETags and return a new token on every successful write, even when the state is unchanged. If another activation has changed the ETag, the activation attempting to save state will stop. The built-in ETS provider uses an always increasing integer version per row, starting at 1.
 
 Activations are registered through
 [global](https://www.erlang.org/doc/apps/kernel/global.html) by default.
@@ -39,6 +39,19 @@ events. If a grain supports observers a group is created through
 ### Providers
 
 Interface that must be implemented for any persistent store to be used for grains.
+
+Storage providers generate ETags; grains never compute them from the payload:
+
+* `read(Type, ProviderName, Id)` returns `{ok, State, ETag}` or `{error, not_found}`. Other read errors stop activation.
+* `insert(Type, ProviderName, Id, State)` atomically inserts only when no row exists for that type and id, and returns `{ok, ETag}`. A competing insert returns `{error, bad_etag}` and stops activation.
+* `update(Type, ProviderName, Id, State, ETag)` atomically checks the stored ETag, writes the state, and returns `{ok, NewETag}`. A stale ETag returns `{error, bad_etag}`; a missing row must also be rejected, using `{error, not_found}` or `{error, bad_etag}`.
+* The explicit-hash variants are `insert(Type, ProviderName, Id, Hash, State)` and `update(Type, ProviderName, Id, Hash, State, ETag)`. This hash is a lookup aid, not an ETag.
+
+`undefined` is reserved for state that has not been read or inserted. Providers may use integer, binary, or other token representations. Tokens must not be reused across successful writes to an existing row, including when the payload changes from A to B and back to A.
+
+This changes the provider API: remove the ETag input from `insert` and the caller-computed new ETag input from `update`, and return `{ok, ETag}` instead of `ok`. Existing providers must be updated before use with this version.
+
+The separate [PostgreSQL provider](https://github.com/erleans/erleans_provider_pgo) uses a database-owned version column, as in [Orleans PostgreSQL persistence](https://github.com/dotnet/orleans/blob/main/src/AdoNet/Orleans.Persistence.AdoNet/PostgreSQL-Persistence.sql): a conditional insert returns version `1`, and an update uses `SET version = version + 1 WHERE ... AND version = $expected RETURNING version`. Uniqueness on the complete grain key prevents concurrent inserts from both succeeding. The database version is returned as the ETag, and a failed condition maps to `{error, bad_etag}`.
 
 [Streams](https://github.com/erleans/erleans_streams) have a provider type as well for providing a pluggable stream layer.
 
