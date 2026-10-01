@@ -318,7 +318,10 @@ init_(Parent, GrainRef=#{id := Id,
         _ ->
             case erleans_utils:fun_or_default(CbModule, activate, 2, [GrainRef, CbData], {ok, CbData, #{}}) of
                 {ok, CbData1, GrainOpts} ->
-                    verify_and_enter_loop(Parent, GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1);
+                    %% A first activation reserves the row with the initial
+                    %% state, not the mutations returned by activate/2.
+                    ETag1 = maybe_insert_initial_state(CbModule, Id, Provider, ETag, CbData),
+                    enter_loop(Parent, GrainRef, CbModule, Id, Provider, ETag1, GrainOpts, CbData1);
                 {error, notfound} ->
                     %% activate returning {error, notfound} is given special treatment and
                     %% results in an ignore from the statem and an `exit({noproc, notfound})`
@@ -337,15 +340,14 @@ new_state(CbModule, Id) ->
             {#{}, undefined}
     end.
 
-verify_and_enter_loop(Parent, GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData1) ->
-    {CbData2, ETag1} = verify_etag(CbModule, Id, Provider, ETag, CbData1),
+enter_loop(Parent, GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData) ->
     CreateTime = maps:get(create_time, GrainOpts, erlang:system_time(seconds)),
     DeactivateAfter = deactivate_after(GrainOpts),
     Data = #data{cb_module        = CbModule,
-                 cb_state         = CbData2,
+                 cb_state         = CbData,
 
                  id               = Id,
-                 etag             = ETag1,
+                 etag             = ETag,
                  provider         = Provider,
                  ref              = GrainRef,
                  create_time      = CreateTime,
@@ -561,14 +563,12 @@ update_state(CbModule, {Provider, ProviderName}, Id, Data, ETag) ->
             exit(Reason)
     end.
 
-verify_etag(CbModule, Id, {Provider, ProviderName}, undefined, D={_, CbData}) ->
-    ETag = insert_state(CbModule, Provider, ProviderName, Id, CbData),
-    {D, ETag};
-verify_etag(CbModule, Id, {Provider, ProviderName}, undefined, CbData) ->
-    ETag = insert_state(CbModule, Provider, ProviderName, Id, CbData),
-    {CbData, ETag};
-verify_etag(_, _, _, ETag, CbData) ->
-    {CbData, ETag}.
+maybe_insert_initial_state(CbModule, Id, {Provider, ProviderName}, undefined, {_, CbData}) ->
+    insert_state(CbModule, Provider, ProviderName, Id, CbData);
+maybe_insert_initial_state(CbModule, Id, {Provider, ProviderName}, undefined, CbData) ->
+    insert_state(CbModule, Provider, ProviderName, Id, CbData);
+maybe_insert_initial_state(_, _, _, ETag, _) ->
+    ETag.
 
 insert_state(CbModule, Provider, ProviderName, Id, CbData) ->
     case Provider:insert(CbModule, ProviderName, Id, CbData) of

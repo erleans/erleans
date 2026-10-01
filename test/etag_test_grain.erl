@@ -4,8 +4,15 @@
 -export([placement/0, state/1, activate/2, handle_call/3, handle_cast/2, deactivate/1]).
 
 placement() -> prefer_local.
+state({activation_mutations, _}) -> #{value => a, activations => 0};
 state(_) -> #{value => a}.
 
+activate(#{id := activation_failure}, _) ->
+    {error, activation_failed};
+activate(#{id := {activation_mutations, plain}}, State = #{activations := N}) ->
+    {ok, State#{activations => N + 1}, #{deactivate_after => 50000}};
+activate(#{id := {activation_mutations, ephemeral}}, State = #{activations := N}) ->
+    {ok, {make_ref(), State#{activations => N + 1}}, #{deactivate_after => 50000}};
 activate(#{id := {pause, Test, Tag}}, State) ->
     Test ! {Tag, activating, self()},
     receive {Tag, resume} -> ok end,
@@ -13,6 +20,8 @@ activate(#{id := {pause, Test, Tag}}, State) ->
 activate(_, State) ->
     {ok, State, #{deactivate_after => 50000}}.
 
+handle_call(state, From, State) ->
+    {ok, State, [{reply, From, State}]};
 handle_call(get, From, State = #{value := Value}) ->
     {ok, State, [{reply, From, Value}]};
 handle_call(save, From, State) ->
@@ -21,4 +30,6 @@ handle_call({set, Value}, From, State) ->
     {ok, State#{value => Value}, [save_state, {reply, From, ok}]}.
 
 handle_cast(_, State) -> {ok, State}.
+deactivate(State = #{activations := _}) -> {ok, State};
+deactivate(State = {_, #{activations := _}}) -> {ok, State};
 deactivate(State) -> {save_state, State}.

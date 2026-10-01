@@ -75,6 +75,12 @@ This changes the provider API: remove the ETag input from `insert` and the calle
 
 The separate [PostgreSQL provider](https://github.com/erleans/erleans_provider_pgo) uses a database-owned version column, as in [Orleans PostgreSQL persistence](https://github.com/dotnet/orleans/blob/main/src/AdoNet/Orleans.Persistence.AdoNet/PostgreSQL-Persistence.sql): a conditional insert returns version `1`, and an update uses `SET version = version + 1 WHERE ... AND version = $expected RETURNING version`. Uniqueness on the complete grain key prevents concurrent inserts from both succeeding. The database version is returned as the ETag, and a failed condition maps to `{error, bad_etag}`.
 
+After a successful first activation, a missing row is conditionally inserted
+using the initial persistent state from `state/1` (or `#{}` when it is absent).
+Changes returned by `activate/2` remain in memory, on both first and subsequent
+activations, until a `save_state` action or a `{save_state, State}` result from
+`deactivate/1` persists them. Failed activation does not insert a row.
+
 [Streams](https://github.com/erleans/erleans_streams) have a provider type as well for providing a pluggable stream layer.
 
 ## Differences from gen_server

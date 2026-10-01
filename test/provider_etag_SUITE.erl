@@ -3,7 +3,8 @@
 -export([all/0, init_per_suite/1, end_per_suite/1,
          versions/1, concurrent_insert/1, concurrent_update/1,
          grain_keys_and_hashes/1, opaque_tokens/1,
-         activation_insert_conflict/1, storage_failures/1]).
+         activation_insert_conflict/1, storage_failures/1,
+         activation_mutations_require_save/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -13,7 +14,8 @@
 
 all() ->
     [versions, concurrent_insert, concurrent_update, grain_keys_and_hashes,
-     opaque_tokens, activation_insert_conflict, storage_failures].
+     opaque_tokens, activation_insert_conflict, storage_failures,
+     activation_mutations_require_save].
 
 init_per_suite(Config) ->
     {ok, _} = application:ensure_all_started(erleans),
@@ -110,10 +112,54 @@ storage_failures(_) ->
     ?assertExit({noproc, insert_failed}, erleans_grain:call(grain(insert_failure), get)),
     ?assertEqual({error, not_found}, ?provider:read(etag_test_grain, ?store, read_failure)),
     ?assertEqual({error, not_found}, ?provider:read(etag_test_grain, ?store, insert_failure)),
+    Existing = #{value => existing},
+    {ok, 1} = ?provider:insert(etag_test_grain, ?store, read_failure, Existing),
+    ?assertExit({noproc, read_failed}, erleans_grain:call(grain(read_failure), get)),
+    ?assertEqual({ok, Existing, 1}, ?provider:read(etag_test_grain, ?store, read_failure)),
+    ?assertExit({noproc, activation_failed}, erleans_grain:call(grain(activation_failure), get)),
+    ?assertEqual({error, not_found}, ?provider:read(etag_test_grain, ?store, activation_failure)),
     Grain = grain(write_failure),
     ?assertEqual(a, erleans_grain:call(Grain, get)),
     ?assertExit({write_failed, _}, erleans_grain:call(Grain, {set, b})),
     ?assertEqual({ok, #{value => a}, <<"version:1">>}, read(write_failure)).
+
+activation_mutations_require_save(_) ->
+    lists:foreach(fun(Kind) ->
+        Id = {activation_mutations, Kind},
+        Grain = grain(Id),
+        Initial = #{value => a, activations => 0},
+        Activated = Initial#{activations => 1},
+        First = erleans_grain:call(Grain, state),
+        assert_activation_state(Kind, Activated, First),
+        ?assertEqual({ok, Initial, <<"version:1">>}, read(Id)),
+        stop_without_saving(Grain),
+
+        %% An unsaved first activation behaves exactly like later activations.
+        Second = erleans_grain:call(Grain, state),
+        assert_activation_state(Kind, Activated, Second),
+        ?assertEqual({ok, Initial, <<"version:1">>}, read(Id)),
+        ok = erleans_grain:call(Grain, save),
+        ?assertEqual({ok, Activated, <<"version:2">>}, read(Id)),
+        stop_without_saving(Grain),
+
+        Third = erleans_grain:call(Grain, state),
+        Updated = Initial#{activations => 2},
+        assert_activation_state(Kind, Updated, Third),
+        ?assertEqual({ok, Activated, <<"version:2">>}, read(Id)),
+        ok = erleans_grain:call(Grain, save),
+        ?assertEqual({ok, Updated, <<"version:3">>}, read(Id)),
+        stop_without_saving(Grain)
+    end, [plain, ephemeral]).
+
+assert_activation_state(plain, Expected, State) ->
+    ?assertEqual(Expected, State);
+assert_activation_state(ephemeral, Expected, {Ephemeral, Persistent}) ->
+    ?assert(is_reference(Ephemeral)),
+    ?assertEqual(Expected, Persistent).
+
+stop_without_saving(Grain) ->
+    Pid = erleans_grain_registry:whereis_name(Grain),
+    gen_statem:stop(Pid, shutdown, infinity).
 
 grain(Id) ->
     Ref = erleans:get_grain(etag_test_grain, Id),
