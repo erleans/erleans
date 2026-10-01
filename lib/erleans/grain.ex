@@ -4,10 +4,10 @@ defmodule Erleans.Grain do
 
   @callback activate(:erleans.grain_ref(), term()) :: {:ok, term(), :erleans_grain.opts()} | {:error, term()}
 
-  @callback handle_call(term(), {pid(), term()}, term()) :: :erlans_grain.callback_result()
-  @callback handle_cast(term(), term()) :: :erlans_grain.callback_result()
-  @callback handle_info(term(), term()) :: :erlans_grain.callback_result()
-  @callback deactivate(term()) :: :ok | :save_state | {:save, term()}
+  @callback handle_call(term(), {pid(), term()}, term()) :: :erleans_grain.callback_result()
+  @callback handle_cast(term(), term()) :: :erleans_grain.callback_result()
+  @callback handle_info(term(), term()) :: :erleans_grain.callback_result()
+  @callback deactivate(term()) :: {:ok, term()} | {:save_state, term()}
 
   @optional_callbacks state: 1, activate: 2, deactivate: 1, handle_info: 2
 

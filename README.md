@@ -149,11 +149,24 @@ $ rebar3 as test shell
 
 ## Elixir Example
 
+Configure the built-in ETS provider in `config/config.exs`:
+
+```elixir
+import Config
+
+config :erleans,
+  providers: %{in_memory: %{module: :erleans_provider_ets, args: %{}}},
+  default_provider: :in_memory
+```
+
+This provider stores state in memory and does not survive node restarts. Put the
+grain implementation in `lib/erleans_elixir_example.ex`:
+
 ``` elixir
 defmodule ErleansElixirExample do
   use Erleans.Grain,
     placement: :prefer_local,
-    provider: :postgres,
+    provider: :in_memory,
     state: %{:counter => 0}
 
   def get(ref) do
@@ -197,5 +210,7 @@ iex(a@localhost)4> ErleansElixirExample.get(ref)
 ```
 $ epmd -daemon
 $ rebar3 ct
+$ MIX_ENV=test mix deps.get
+$ mix test
 ```
 

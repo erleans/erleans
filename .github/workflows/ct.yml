@@ -25,6 +25,7 @@ jobs:
       with:
         otp-version: ${{ matrix.otp_version }}
         rebar3-version: ${{ matrix.rebar3_version }}
+        elixir-version: '1.19.5-otp-28'
     - name: Install ELP
       env:
         ELP_VERSION: '2026-08-10'
@@ -64,6 +65,14 @@ jobs:
       run: elp lint --project . --as test --rebar
     - name: Eqwalizer
       run: elp eqwalize-all --project . --as test --rebar --bail-on-error
+    - name: Elixir integration
+      env:
+        MIX_ENV: test
+        MIX_BUILD_PATH: _build/mix
+        MIX_DEPS_PATH: _build/mix_deps
+      run: |
+        mix deps.get --only test
+        mix test --warnings-as-errors
     - name: Covertool
       if: ${{ always() }}
       run: rebar3 covertool generate

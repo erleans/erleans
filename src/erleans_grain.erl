@@ -114,7 +114,7 @@ depending on incoming requests and configuration.
                   deactivate_after => deactivate_after()
                  }.
 
--export_type([opts/0]).
+-export_type([opts/0, callback_result/0]).
 
 -spec start_link(GrainRef :: erleans:grain_ref()) -> {ok, pid() | undefined} | {error, term()}.
 start_link(GrainRef) ->

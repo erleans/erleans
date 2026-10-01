@@ -5,7 +5,7 @@ defmodule Erleans.MixProject do
     [
       app: :erleans,
       version: get_version("VERSION"),
-      elixir: "~> 1.9",
+      elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       package: package(),
       deps: deps()
@@ -24,10 +24,8 @@ defmodule Erleans.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:gproc, "~> 0.8.0"},
-      {:sbroker, "~> 1.0.0"},
-      {:erlware_commons, "~> 1.3.1"},
-      {:types, "~> 0.1.8", override: true},
+      {:gproc, "~> 1.0.0"},
+      {:gen_cluster, "~> 0.3.0"},
       {:ex_doc, "~> 0.21", only: :dev, runtime: false},
     ]
   end
