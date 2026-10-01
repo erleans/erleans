@@ -19,6 +19,8 @@ Grain state is persisted through a storage provider which owns its change id or 
 
 Activations are registered through
 [global](https://www.erlang.org/doc/apps/kernel/global.html) by default.
+The registration is retained until `deactivate/1` and any state save it requests
+have completed, so a replacement activation reads the completed save.
 
 Exceptions raised by `handle_call/3` are returned to the calling process and
 re-raised with their original class, reason, and callback stacktrace. The

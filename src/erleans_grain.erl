@@ -501,10 +501,7 @@ finalize_and_stop(Data=#data{cb_module=CbModule,
                              provider=Provider,
                              cb_state=CbData,
                              etag=ETag}) ->
-    %% Save to or delete from backing storage.
-    maybe_unregister(Ref),
-
-    case erleans_utils:fun_or_default(CbModule, deactivate, 1, [CbData], {ok, CbData}) of
+    Stop = case erleans_utils:fun_or_default(CbModule, deactivate, 1, [CbData], {ok, CbData}) of
         {save_state, NewCbData={_, PersistentState}} ->
             NewETag = update_state(CbModule, Provider, Id, PersistentState, ETag),
             {stop, {shutdown, deactivated}, Data#data{cb_state=NewCbData,
@@ -515,7 +512,12 @@ finalize_and_stop(Data=#data{cb_module=CbModule,
                                                       etag=NewETag}};
         {ok, NewCbData} ->
             {stop, {shutdown, deactivated}, Data#data{cb_state=NewCbData}}
-    end.
+    end,
+    %% Retain ownership until the callback and its requested save have finished,
+    %% so a replacement activation cannot read the previous persisted state.
+    %% If either fails, global removes the registration when this process exits.
+    maybe_unregister(Ref),
+    Stop.
 
 handle_result({ok, NewCbData}, Data=#data{ref=_GrainRef}, Actions) ->
     {keep_state, Data#data{cb_state=NewCbData}, Actions};

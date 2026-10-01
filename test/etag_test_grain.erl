@@ -20,6 +20,8 @@ activate(#{id := {pause, Test, Tag}}, State) ->
 activate(_, State) ->
     {ok, State, #{deactivate_after => 50000}}.
 
+handle_call({deactivate, Test, Tag, Kind}, From, State) ->
+    {deactivate, {{Test, Tag, Kind}, State}, [{reply, From, ok}]};
 handle_call(state, From, State) ->
     {ok, State, [{reply, From, State}]};
 handle_call(get, From, State = #{value := Value}) ->
@@ -30,6 +32,14 @@ handle_call({set, Value}, From, State) ->
     {ok, State#{value => Value}, [save_state, {reply, From, ok}]}.
 
 handle_cast(_, State) -> {ok, State}.
+deactivate({{Test, Tag, Kind}, State}) ->
+    Test ! {Tag, deactivating, self()},
+    receive {Tag, finish_deactivate} -> ok end,
+    case Kind of
+        plain -> {save_state, State#{value => saved}};
+        ephemeral -> {save_state, {undefined, State#{value => saved}}};
+        no_save -> {ok, State}
+    end;
 deactivate(State = #{activations := _}) -> {ok, State};
 deactivate(State = {_, #{activations := _}}) -> {ok, State};
 deactivate(State) -> {save_state, State}.

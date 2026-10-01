@@ -9,6 +9,7 @@
          init_per_suite/1,
          end_per_suite/1,
          node_loss_reroutes/1,
+         deactivation_keeps_registration/1,
          manual_start_stop/1]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -16,7 +17,7 @@
 -include("test_utils.hrl").
 
 all() ->
-    [manual_start_stop, node_loss_reroutes].
+    [manual_start_stop, node_loss_reroutes, deactivation_keeps_registration].
 
 init_per_suite(Config) ->
     {ok, _} = application:ensure_all_started(erleans),
@@ -25,6 +26,84 @@ init_per_suite(Config) ->
 end_per_suite(_) ->
     application:stop(erleans),
     ok.
+
+deactivation_keeps_registration(_Config) ->
+    Paths = ["-config", "../../../../test/sys.config", "-pa" | code:get_path()],
+    {ok, PeerPid, Peer} = ?CT_PEER(Paths),
+    true = is_pid(PeerPid),
+    try
+        erpc:call(Peer, application, load, [gen_cluster]),
+        erpc:call(Peer, application, set_env, [gen_cluster, type, {list, []}]),
+        {ok, _} = erpc:call(Peer, application, ensure_all_started, [erleans]),
+        lists:foreach(fun(Kind) -> deactivation_keeps_registration(Peer, Kind) end,
+                      [plain, ephemeral, no_save])
+    after
+        peer:stop(PeerPid)
+    end.
+
+deactivation_keeps_registration(Peer, Kind) ->
+    Test = self(),
+    Tag = make_ref(),
+    Id = {deactivation_save, Test, Tag},
+    Grain0 = erleans:get_grain(etag_test_grain, Id),
+    Grain = Grain0#{provider => {opaque_etag_provider, in_memory}},
+    ?assertEqual(a, erleans_grain:call(Grain, get)),
+    Pid = erleans_grain_registry:whereis_name(Grain),
+    true = is_pid(Pid),
+    Monitor = monitor(process, Pid),
+    ?UNTIL(Pid =:= erpc:call(Peer, erleans_grain_registry, whereis_name, [Grain])),
+    try
+        ok = erleans_grain:call(Grain, {deactivate, Test, Tag, Kind}),
+        receive {Tag, deactivating, Pid} -> ok
+        after 1000 -> ct:fail(deactivation_not_started)
+        end,
+        assert_registered(Peer, Grain, Pid),
+        {Reader, ReaderMonitor} = spawn_monitor(fun() ->
+            Test ! {Tag, read, erleans_grain:call(Grain, get)}
+        end),
+        %% Make the second call arrive while deactivate/1 is still running.
+        ?UNTIL(begin
+            {messages, Messages} = process_info(Pid, messages),
+            lists:any(fun({'$gen_call', _, _}) -> true; (_) -> false end, Messages)
+        end),
+        Pid ! {Tag, finish_deactivate},
+        {Expected, Version} = case Kind of
+            no_save -> {a, <<"version:1">>};
+            _ ->
+                receive {Tag, saving, Pid} -> ok
+                after 1000 -> ct:fail(save_not_started)
+                end,
+                assert_registered(Peer, Grain, Pid),
+                ?assertEqual({ok, #{value => a}, <<"version:1">>},
+                             opaque_etag_provider:read(etag_test_grain, in_memory, Id)),
+                Pid ! {Tag, finish_save},
+                {saved, <<"version:2">>}
+        end,
+        receive {'DOWN', Monitor, process, Pid, {shutdown, deactivated}} -> ok
+        after 1000 -> ct:fail(grain_not_deactivated)
+        end,
+        receive {Tag, read, Value} -> ?assertEqual(Expected, Value)
+        after 1000 -> ct:fail(reader_not_rerouted)
+        end,
+        receive {'DOWN', ReaderMonitor, process, Reader, normal} -> ok
+        after 1000 -> ct:fail(reader_failed)
+        end,
+        ?assertEqual({ok, #{value => Expected}, Version},
+                     opaque_etag_provider:read(etag_test_grain, in_memory, Id)),
+        %% The replacement activation must have the current ETag on its first save.
+        ok = erleans_grain:call(Grain, {set, latest}),
+        ?assertEqual(latest, erleans_grain:call(Grain, get)),
+        ?assertNotEqual(Pid, erleans_grain_registry:whereis_name(Grain))
+    after
+        Pid ! {Tag, finish_deactivate},
+        Pid ! {Tag, finish_save}
+    end.
+
+assert_registered(Peer, Grain, Pid) ->
+    ?assertEqual(Pid, erleans_grain_registry:whereis_name(Grain)),
+    ?assertEqual(Pid, erpc:call(Peer, erleans_grain_registry, whereis_name, [Grain])),
+    ?assertEqual({error, {already_started, Pid}},
+                 erpc:call(Peer, erleans_grain_sup, start_child, [Grain])).
 
 node_loss_reroutes(_Config) ->
     Paths = ["-config", "../../../../test/sys.config", "-pa" | code:get_path()],
