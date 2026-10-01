@@ -37,7 +37,7 @@ Erleans Grain registry.
 
 -spec register_name(Name :: erleans:grain_ref(), Pid :: pid()) -> yes | no.
 register_name(Name, Pid) when is_pid(Pid) ->
-    global:register_name(Name, Pid, fun ?MODULE:resolve_name/3).
+    global:register_name(erleans:identity(Name), Pid, fun ?MODULE:resolve_name/3).
 
 -spec resolve_name(term(), pid(), pid()) -> pid().
 resolve_name(_Name, Pid, Pid) ->
@@ -63,14 +63,14 @@ unregister_name(Name) ->
 
 -spec unregister_name(Name :: erleans:grain_ref(), Pid :: pid()) -> ok.
 unregister_name(Name, _Pid) ->
-    _ = global:unregister_name(Name),
+    _ = global:unregister_name(erleans:identity(Name)),
     ok.
 
 -spec whereis_name(GrainRef :: erleans:grain_ref()) -> pid() | undefined.
 whereis_name(GrainRef=#{placement := {stateless, _}}) ->
     whereis_stateless(GrainRef);
 whereis_name(GrainRef) ->
-    global:whereis_name(GrainRef).
+    global:whereis_name(erleans:identity(GrainRef)).
 
 -spec send(Name :: erleans:grain_ref(), Message :: term()) -> term().
 send(Name, Message) ->

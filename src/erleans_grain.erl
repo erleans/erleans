@@ -67,7 +67,9 @@ depending on incoming requests and configuration.
 
 -callback placement() -> erleans:grain_placement().
 
--callback state(Id :: term()) -> term().
+-callback key_type() -> erleans:grain_key_type().
+
+-callback state(Id :: erleans:grain_key()) -> term().
 
 -callback activate(Ref :: erleans:grain_ref(), Arg :: term()) -> {ok, Data :: cb_state(), opts()} |
                                                                  {error, Reason :: term()}.
@@ -88,6 +90,7 @@ depending on incoming requests and configuration.
 
 -optional_callbacks([activate/2,
                      provider/0,
+                     key_type/0,
                      placement/0,
                      state/1,
                      handle_info/2,
@@ -100,7 +103,7 @@ depending on incoming requests and configuration.
        { cb_module            :: module(),
          cb_state             :: cb_state(),
 
-         id                   :: term(),
+         id                   :: erleans:grain_key(),
          etag                 :: etag(),
          provider             :: term(),
          ref                  :: erleans:grain_ref(),

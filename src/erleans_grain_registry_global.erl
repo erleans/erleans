@@ -29,7 +29,7 @@ Erleans Grain registry backed by Erlang's global.
 
 -spec register_name(Name :: erleans:grain_ref(), Pid :: pid()) -> yes | no.
 register_name(Name, Pid) when is_pid(Pid) ->
-    case global:register_name(Name, Pid) of
+    case global:register_name(erleans:identity(Name), Pid) of
         yes ->
             yes;
         _ ->
@@ -47,14 +47,14 @@ unregister_name(Name) ->
 
 -spec unregister_name(Name :: erleans:grain_ref(), Pid :: pid()) -> ok.
 unregister_name(Name, _Pid) ->
-    _ = global:unregister_name(Name),
+    _ = global:unregister_name(erleans:identity(Name)),
     ok.
 
 -spec whereis_name(GrainRef :: erleans:grain_ref()) -> pid() | undefined.
 whereis_name(GrainRef=#{placement := {stateless, _}}) ->
     whereis_stateless(GrainRef);
 whereis_name(GrainRef) ->
-    global:whereis_name(GrainRef).
+    global:whereis_name(erleans:identity(GrainRef)).
 
 -spec send(Name :: erleans:grain_ref(), Message :: term()) -> term().
 send(Name, Message) ->
@@ -66,7 +66,7 @@ send(Name, Message) ->
     end.
 
 whereis_stateless(GrainRef) ->
-    case gproc_pool:pick_worker(GrainRef) of
+    case gproc_pool:pick_worker({pool, erleans:identity(GrainRef)}) of
         false ->
             undefined;
         Pid ->

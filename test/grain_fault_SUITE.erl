@@ -160,7 +160,7 @@ pool_timeout(_) ->
     normal_down(Caller, Monitor).
 
 grain(Placement) ->
-    Ref = erleans:get_grain(fault_test_grain, make_ref()),
+    Ref = erleans:get_grain(fault_test_grain, integer_to_binary(erlang:unique_integer([positive]))),
     Ref#{placement => Placement}.
 
 %% A selected worker which dies as a call arrives, before producing a reply.
@@ -177,7 +177,7 @@ stand_in(Grain, Reason, Delay) ->
                 ok = gproc_pool:new(?pool(Grain), claim, [{autosize, true}]),
                 gproc_pool:add_worker(?pool(Grain), self()),
                 gproc_pool:connect_worker(?pool(Grain), self());
-            _ -> yes = global:register_name(Grain, self())
+            _ -> yes = erleans_grain_registry:register_name(Grain, self())
         end,
         Test ! {Tag, ready},
         receive {'$gen_call', _, _} -> timer:sleep(Delay), exit(Reason) end

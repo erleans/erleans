@@ -25,7 +25,7 @@ defmodule Erleans.GrainTest do
 
   test "Elixir grains call, cast, and deactivate with or without saving" do
     for save? <- [false, true] do
-      ref = Erleans.get_grain(Erleans.ElixirTestGrain, make_ref())
+      ref = Erleans.get_grain(Erleans.ElixirTestGrain, Integer.to_string(System.unique_integer([:positive])))
       assert 0 == Erleans.Grain.call(ref, :get)
       assert :ok == Erleans.Grain.cast(ref, :increment)
       assert 1 == Erleans.Grain.call(ref, :get)
@@ -42,5 +42,27 @@ defmodule Erleans.GrainTest do
 
       assert expected == Erleans.Grain.call(ref, :get)
     end
+  end
+end
+
+defmodule Erleans.ElixirUUIDGrain do
+  use Erleans.Grain, key_type: :uuid, placement: :prefer_local
+
+  def handle_call(:get, from, state), do: {:ok, state, [{:reply, from, :ok}]}
+  def handle_cast(_, state), do: {:ok, state}
+end
+
+defmodule Erleans.KeyTest do
+  use ExUnit.Case, async: false
+
+  test "key type options require canonical UUIDs" do
+    assert :string == Erleans.ElixirTestGrain.key_type()
+    assert :uuid == Erleans.ElixirUUIDGrain.key_type()
+    text = "550E8400-E29B-41D4-A716-446655440000"
+    bytes = Base.decode16!("550E8400E29B41D4A716446655440000")
+    assert_raise ErlangError, fn -> Erleans.get_grain(Erleans.ElixirUUIDGrain, text) end
+    assert Erleans.get_grain(Erleans.ElixirUUIDGrain, :erleans_grain_key.normalize(:uuid, text)) ==
+             Erleans.get_grain(Erleans.ElixirUUIDGrain, bytes)
+    assert_raise ErlangError, fn -> Erleans.get_grain(Erleans.ElixirTestGrain, 42) end
   end
 end

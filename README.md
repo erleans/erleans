@@ -48,6 +48,72 @@ A transport failure can happen after a request has executed but before its reply
 arrives. Retrying that request can repeat side effects; operations which need to
 avoid duplicates should use application-level request IDs and deduplication.
 
+### Grain keys
+
+Each grain module declares one key type with an optional `key_type/0` callback.
+The default is `string`. Callers pass untagged values to `get_grain/2`:
+
+| `key_type/0` | Example input |
+| --- | --- |
+| `string` (default) | `<<"alice">>` |
+| `integer` | `42` |
+| `uuid` | A 16-byte UUID binary |
+| `integer_compound` | `{42, <<"tenant-a">>}` |
+| `uuid_compound` | `{UUID, <<"tenant-a">>}` |
+
+For example, an Erlang grain using UUID keys exports:
+
+```erlang
+key_type() -> uuid.
+```
+
+An Elixir grain declares the same contract with `use Erleans.Grain, key_type: :uuid`.
+Integers must fit a signed 64-bit value. Strings are UTF-8 binaries without NUL;
+Erlang character lists are not accepted. Empty string keys are allowed, but
+compound extensions must be nonempty. Strings retain their exact bytes, including
+case and Unicode composition. Every canonical encoded key is limited to 512 bytes.
+
+UUID keys must be 16 raw bytes, including inside compound keys. Callers can
+explicitly convert textual UUIDs at their application boundary:
+
+```erlang
+UUID = erleans_grain_key:normalize(uuid, <<"550E8400-E29B-41D4-A716-446655440000">>),
+Ref = erleans:get_grain(player_grain, UUID).
+```
+
+The optional `normalize/2` helper accepts 32 hexadecimal digits or 36-byte
+hyphenated UUID text in either case. Runtime operations never call it.
+`get_grain/2` validates the supplied key without converting it. Thereafter calls,
+casts, activation, registry and pool lookups, and hashing use that key directly.
+Construct references through `get_grain/2`; code that manually builds or changes a
+reference is responsible for preserving its canonical key. Different raw keys
+are different identities and are not silently repaired. Direct provider callers
+must also supply canonical keys. Providers serialize keys without normalizing or
+revalidating them. Stored text is validated when decoded by `decode/2`.
+
+Invalid keys raise `{invalid_grain_key, KeyType, Input}`; unsupported declarations
+raise `{invalid_grain_key_type, Type}`. Atoms, floats, maps, PIDs, references, and
+arbitrary tuples are not grain keys.
+
+Logical identity is the implementing module plus the canonical key. Registry
+names and stateless pool names use `erleans:identity/1`, independently of provider
+and placement metadata. Each module must keep its key type consistent on all nodes.
+
+Providers can use `erleans_grain_key:encode/2` and `decode/2` with the module's
+`erleans:key_type/1`. String keys are stored verbatim, integers as decimal, UUIDs
+as lowercase hyphenated text, and compound keys as `Base:Extension`. Only the
+first colon separates a compound key; colons in the extension are preserved.
+The encoding has no type tags because the grain module supplies its interpretation.
+`decode/2` rejects noncanonical spellings with
+`{invalid_encoded_grain_key, KeyType, Encoded}`. Default lookup hashes use
+`erleans_grain_key:hash(Module, Key)`, which hashes the supplied key unchanged.
+
+This is a breaking identity change. Replace old arbitrary-term IDs with supported
+keys and migrate persisted IDs before upgrading. Stop old activations on every
+node before deploying the new core and providers: registry and pool names have
+changed. Changing an existing module's key type also requires migration. Grain
+payload serialization and provider-owned ETags are independent of key encoding.
+
 ### Stateless Grains
 
 Stateless grains have no restriction on the number of activations and do not persist state to a database.

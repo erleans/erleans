@@ -218,7 +218,7 @@ callback_crash_does_not_save(_Config) ->
     lists:foreach(
       fun(Kind) ->
               Grain = #{id := Id, provider := {Provider, Name}} =
-                  erleans:get_grain(test_grain, {callback_crash, Kind}),
+                  erleans:get_grain(test_grain, <<"callback_crash:", (atom_to_binary(Kind))/binary>>),
               ok = test_grain:save(Grain),
               Saved = Provider:read(test_grain, Name, Id),
               ?assertMatch({ok, #{deactivated_counter := 0}, _}, Saved),
@@ -242,7 +242,7 @@ shutdown_saves_state(_Config) ->
     lists:foreach(
       fun(Reason) ->
               Grain = #{id := Id, provider := {Provider, Name}} =
-                  erleans:get_grain(test_grain, {shutdown_saves_state, Reason}),
+                  erleans:get_grain(test_grain, integer_to_binary(erlang:unique_integer([positive]))),
               {ok, 0} = test_grain:call_counter(Grain),
               Pid = erleans_grain_registry:whereis_name(Grain),
               ok = gen_statem:stop(Pid, Reason, infinity),
@@ -253,13 +253,13 @@ shutdown_saves_state(_Config) ->
 existing_global_registration(_Config) ->
     Grain = erleans:get_grain(test_grain, <<"existing-global-registration">>),
     Owner = self(),
-    yes = global:register_name(Grain, Owner),
+    yes = erleans_grain_registry:register_name(Grain, Owner),
     try
         ?assertEqual({error, {already_started, Owner}},
                      erleans_grain_sup:start_child(Grain)),
         ?assertEqual(Owner, erleans_grain_registry:whereis_name(Grain))
     after
-        global:unregister_name(Grain)
+        erleans_grain_registry:unregister_name(Grain)
     end.
 
 %% spawn a bunch of procs making calls to the same unactivated grain

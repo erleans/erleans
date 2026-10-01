@@ -25,10 +25,11 @@ init_per_suite(Config) ->
 
 end_per_suite(_) ->
     application:stop(erleans),
+    etag_test_grain:clear_test_keys(),
     ok.
 
 versions(_) ->
-    Id = versions,
+    Id = <<"versions">>,
     ?assertEqual({ok, 1}, ?provider:insert(?MODULE, ?store, Id, a)),
     ?assertEqual({error, bad_etag}, ?provider:insert(?MODULE, ?store, Id, overwritten)),
     ?assertEqual({ok, a, 1}, ?provider:read(?MODULE, ?store, Id)),
@@ -38,24 +39,24 @@ versions(_) ->
     ?assertEqual({error, bad_etag}, ?provider:update(?MODULE, ?store, Id, stale, 1)),
     ?assertEqual({ok, a, 4}, ?provider:read(?MODULE, ?store, Id)),
     ?assertEqual({error, bad_etag}, ?provider:update(?MODULE, ?store, Id, stale, <<"4">>)),
-    ?assertEqual({error, not_found}, ?provider:update(?MODULE, ?store, missing, a, 1)).
+    ?assertEqual({error, not_found}, ?provider:update(?MODULE, ?store, <<"missing">>, a, 1)).
 
 concurrent_insert(_) ->
-    Results = race(fun(I) -> ?provider:insert(?MODULE, ?store, concurrent_insert, I) end),
+    Results = race(fun(I) -> ?provider:insert(?MODULE, ?store, <<"concurrent_insert">>, I) end),
     [{Winner, {ok, 1}}] = [{I, R} || {I, {ok, 1} = R} <- Results],
     ?assertEqual(15, length([ok || {_, {error, bad_etag}} <- Results])),
-    ?assertEqual({ok, Winner, 1}, ?provider:read(?MODULE, ?store, concurrent_insert)).
+    ?assertEqual({ok, Winner, 1}, ?provider:read(?MODULE, ?store, <<"concurrent_insert">>)).
 
 concurrent_update(_) ->
-    {ok, 1} = ?provider:insert(?MODULE, ?store, concurrent_update, initial),
-    Results = race(fun(I) -> ?provider:update(?MODULE, ?store, concurrent_update, I, 1) end),
+    {ok, 1} = ?provider:insert(?MODULE, ?store, <<"concurrent_update">>, initial),
+    Results = race(fun(I) -> ?provider:update(?MODULE, ?store, <<"concurrent_update">>, I, 1) end),
     [{Winner, {ok, 2}}] = [{I, R} || {I, {ok, 2} = R} <- Results],
     ?assertEqual(15, length([ok || {_, {error, bad_etag}} <- Results])),
-    ?assertEqual({ok, Winner, 2}, ?provider:read(?MODULE, ?store, concurrent_update)).
+    ?assertEqual({ok, Winner, 2}, ?provider:read(?MODULE, ?store, <<"concurrent_update">>)).
 
 grain_keys_and_hashes(_) ->
     %% Ids and payloads must remain literal even if they look like match specs.
-    Id = {'$1', '_'},
+    Id = <<"$1:_">>,
     Payload = #{value => {'$2', {const, '_'}}},
     {ok, 1} = ?provider:insert(first_type, ?store, Id, 123, first),
     {ok, 1} = ?provider:insert(second_type, ?store, Id, 123, second),
@@ -71,31 +72,31 @@ grain_keys_and_hashes(_) ->
     ?assertEqual({ok, second, 1}, ?provider:read(second_type, ?store, Id)).
 
 opaque_tokens(_) ->
-    Grain = grain(opaque_tokens),
+    Grain = grain(<<"opaque_tokens">>),
     ?assertEqual(a, erleans_grain:call(Grain, get)),
-    ?assertEqual({ok, #{value => a}, <<"version:1">>}, read(opaque_tokens)),
+    ?assertEqual({ok, #{value => a}, <<"version:1">>}, read(<<"opaque_tokens">>)),
     ok = erleans_grain:call(Grain, save),
-    ?assertEqual({ok, #{value => a}, <<"version:2">>}, read(opaque_tokens)),
+    ?assertEqual({ok, #{value => a}, <<"version:2">>}, read(<<"opaque_tokens">>)),
     ok = erleans_grain:call(Grain, {set, b}),
-    ?assertEqual({ok, #{value => b}, <<"version:3">>}, read(opaque_tokens)),
+    ?assertEqual({ok, #{value => b}, <<"version:3">>}, read(<<"opaque_tokens">>)),
     Pid = erleans_grain_registry:whereis_name(Grain),
     ok = gen_statem:stop(Pid, shutdown, infinity),
-    ?assertEqual({ok, #{value => b}, <<"version:4">>}, read(opaque_tokens)),
+    ?assertEqual({ok, #{value => b}, <<"version:4">>}, read(<<"opaque_tokens">>)),
     %% A new activation must retain the token returned by read, too.
     ?assertEqual(b, erleans_grain:call(Grain, get)),
     ok = erleans_grain:call(Grain, save),
-    ?assertEqual({ok, #{value => b}, <<"version:5">>}, read(opaque_tokens)),
+    ?assertEqual({ok, #{value => b}, <<"version:5">>}, read(<<"opaque_tokens">>)),
 
-    Ephemeral0 = erleans:get_grain(test_ephemeral_state_grain, opaque_ephemeral),
+    Ephemeral0 = erleans:get_grain(test_ephemeral_state_grain, <<"opaque_ephemeral">>),
     Ephemeral = Ephemeral0#{provider => {opaque_etag_provider, ?store}},
     ?assertEqual({ok, 0}, test_ephemeral_state_grain:ephemeral_counter(Ephemeral)),
     ok = test_ephemeral_state_grain:increment_ephemeral_counter(Ephemeral),
     ?assertMatch({ok, #{activated_counter := 1}, <<"version:2">>},
-                 opaque_etag_provider:read(test_ephemeral_state_grain, ?store, opaque_ephemeral)).
+                 opaque_etag_provider:read(test_ephemeral_state_grain, ?store, <<"opaque_ephemeral">>)).
 
 activation_insert_conflict(_) ->
     Tag = make_ref(),
-    Id = {pause, self(), Tag},
+    Id = etag_test_grain:test_key({pause, self(), Tag}),
     Grain = grain(Id),
     {Caller, Monitor} = spawn_monitor(fun() -> erleans_grain:call(Grain, get) end),
     Activation = receive {Tag, activating, Pid} -> Pid
@@ -113,7 +114,7 @@ pending_calls_on_conflict(_) ->
     lists:foreach(fun(Shape) ->
         Test = self(),
         Tag = make_ref(),
-        Id = {conflict, Shape, Test, Tag},
+        Id = etag_test_grain:test_key({conflict, Shape, Test, Tag}),
         Grain = grain(Id),
         ?assertEqual(a, erleans_grain:call(Grain, get)),
         Pid = erleans_grain_registry:whereis_name(Grain),
@@ -151,24 +152,24 @@ pending_calls_on_conflict(_) ->
     end, [bare, detailed]).
 
 storage_failures(_) ->
-    ?assertExit({noproc, read_failed}, erleans_grain:call(grain(read_failure), get)),
-    ?assertExit({noproc, insert_failed}, erleans_grain:call(grain(insert_failure), get)),
-    ?assertEqual({error, not_found}, ?provider:read(etag_test_grain, ?store, read_failure)),
-    ?assertEqual({error, not_found}, ?provider:read(etag_test_grain, ?store, insert_failure)),
+    ?assertExit({noproc, read_failed}, erleans_grain:call(grain(<<"read_failure">>), get)),
+    ?assertExit({noproc, insert_failed}, erleans_grain:call(grain(<<"insert_failure">>), get)),
+    ?assertEqual({error, not_found}, ?provider:read(etag_test_grain, ?store, <<"read_failure">>)),
+    ?assertEqual({error, not_found}, ?provider:read(etag_test_grain, ?store, <<"insert_failure">>)),
     Existing = #{value => existing},
-    {ok, 1} = ?provider:insert(etag_test_grain, ?store, read_failure, Existing),
-    ?assertExit({noproc, read_failed}, erleans_grain:call(grain(read_failure), get)),
-    ?assertEqual({ok, Existing, 1}, ?provider:read(etag_test_grain, ?store, read_failure)),
-    ?assertExit({noproc, activation_failed}, erleans_grain:call(grain(activation_failure), get)),
-    ?assertEqual({error, not_found}, ?provider:read(etag_test_grain, ?store, activation_failure)),
-    Grain = grain(write_failure),
+    {ok, 1} = ?provider:insert(etag_test_grain, ?store, <<"read_failure">>, Existing),
+    ?assertExit({noproc, read_failed}, erleans_grain:call(grain(<<"read_failure">>), get)),
+    ?assertEqual({ok, Existing, 1}, ?provider:read(etag_test_grain, ?store, <<"read_failure">>)),
+    ?assertExit({noproc, activation_failed}, erleans_grain:call(grain(<<"activation_failure">>), get)),
+    ?assertEqual({error, not_found}, ?provider:read(etag_test_grain, ?store, <<"activation_failure">>)),
+    Grain = grain(<<"write_failure">>),
     ?assertEqual(a, erleans_grain:call(Grain, get)),
     ?assertExit({write_failed, _}, erleans_grain:call(Grain, {set, b})),
-    ?assertEqual({ok, #{value => a}, <<"version:1">>}, read(write_failure)).
+    ?assertEqual({ok, #{value => a}, <<"version:1">>}, read(<<"write_failure">>)).
 
 activation_mutations_require_save(_) ->
     lists:foreach(fun(Kind) ->
-        Id = {activation_mutations, Kind},
+        Id = <<"activation_mutations:", (atom_to_binary(Kind))/binary>>,
         Grain = grain(Id),
         Initial = #{value => a, activations => 0},
         Activated = Initial#{activations => 1},

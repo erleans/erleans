@@ -12,7 +12,7 @@ all(Type, Name) ->
     {ok, Rows} = erleans_provider_ets:all(Type, Name),
     {ok, [{Id, T, Hash, encode(Version), State} || {Id, T, Hash, Version, State} <- Rows]}.
 
-read(_, _, read_failure) -> {error, read_failed};
+read(_, _, <<"read_failure">>) -> {error, read_failed};
 read(Type, Name, Id) ->
     case erleans_provider_ets:read(Type, Name, Id) of
         {ok, State, Version} -> {ok, State, encode(Version)};
@@ -23,27 +23,29 @@ read_by_hash(Type, Name, Hash) ->
     {ok, Rows} = erleans_provider_ets:read_by_hash(Type, Name, Hash),
     {ok, [{Id, T, encode(Version), State} || {Id, T, Version, State} <- Rows]}.
 
-insert(_, _, insert_failure, _) -> {error, insert_failed};
+insert(_, _, <<"insert_failure">>, _) -> {error, insert_failed};
 insert(Type, Name, Id, State) ->
     result(erleans_provider_ets:insert(Type, Name, Id, State)).
 
 insert(Type, Name, Id, Hash, State) ->
     result(erleans_provider_ets:insert(Type, Name, Id, Hash, State)).
 
-update(_, _, write_failure, _, _) -> {error, write_failed};
-update(_, _, {conflict, Shape, Test, Tag}, _, ETag) ->
-    Test ! {Tag, saving, self()},
-    receive {Tag, finish_save} -> ok end,
-    case Shape of
-        bare -> {error, bad_etag};
-        detailed -> {error, {bad_etag, ETag, <<"version:2">>}}
-    end;
-update(Type, Name, Id = {deactivation_save, Test, Tag}, State = #{value := saved}, ETag) ->
-    Test ! {Tag, saving, self()},
-    receive {Tag, finish_save} -> ok end,
-    result(erleans_provider_ets:update(Type, Name, Id, State, decode(ETag)));
+update(_, _, <<"write_failure">>, _, _) -> {error, write_failed};
 update(Type, Name, Id, State, ETag) ->
-    result(erleans_provider_ets:update(Type, Name, Id, State, decode(ETag))).
+    case {etag_test_grain:test_control(Id), State} of
+        {{conflict, Shape, Test, Tag}, _} ->
+            Test ! {Tag, saving, self()},
+            receive {Tag, finish_save} -> ok end,
+            case Shape of
+                bare -> {error, bad_etag};
+                detailed -> {error, {bad_etag, ETag, <<"version:2">>}}
+            end;
+        {{deactivation_save, Test, Tag}, #{value := saved}} ->
+            Test ! {Tag, saving, self()},
+            receive {Tag, finish_save} -> ok end,
+            result(erleans_provider_ets:update(Type, Name, Id, State, decode(ETag)));
+        _ -> result(erleans_provider_ets:update(Type, Name, Id, State, decode(ETag)))
+    end.
 
 update(Type, Name, Id, Hash, State, ETag) ->
     result(erleans_provider_ets:update(Type, Name, Id, Hash, State, decode(ETag))).

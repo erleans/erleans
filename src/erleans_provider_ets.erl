@@ -44,7 +44,7 @@ read_by_hash(Type, ProviderName, Hash) ->
              {{_, Id}, _, _, ETag, Object} <- ets:match_object(ProviderName, {'_', Type, Hash, '_', '_'})]}.
 
 insert(Type, ProviderName, Id, State) ->
-    insert(Type, ProviderName, Id, erlang:phash2({Id, Type}), State).
+    insert(Type, ProviderName, Id, erleans_grain_key:hash(Type, Id), State).
 
 insert(Type, ProviderName, Id, Hash, State) ->
     case ets:insert_new(ProviderName, {{Type, Id}, Type, Hash, 1, State}) of
@@ -53,11 +53,11 @@ insert(Type, ProviderName, Id, Hash, State) ->
     end.
 
 update(Type, ProviderName, Id, State, ETag) ->
-    update(Type, ProviderName, Id, erlang:phash2({Id, Type}), State, ETag).
+    update(Type, ProviderName, Id, erleans_grain_key:hash(Type, Id), State, ETag).
 
 update(Type, ProviderName, Id, Hash, State, ETag) when is_integer(ETag), ETag > 0 ->
     %% Compare and increment in one ETS operation, including for unchanged data.
-    %% Constants keep arbitrary grain ids and payloads out of match-spec syntax.
+    %% Constants keep grain keys and arbitrary payloads out of match-spec syntax.
     Match = [{{'$1', '_', '_', '$2', '_'},
               [{'=:=', '$1', {const, {Type, Id}}}, {'=:=', '$2', {const, ETag}}],
               [{{'$1', {const, Type}, {const, Hash}, {'+', '$2', 1}, {const, State}}}]}],

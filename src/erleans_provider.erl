@@ -27,26 +27,28 @@
 
 -callback start_link(ProviderName :: atom(), Args :: list()) -> {ok, pid()}.
 
--callback all(Type :: module(), ProviderName :: atom()) -> {ok, [any()]} | {error, any()}.
+-callback all(Type :: module(), ProviderName :: atom()) ->
+    {ok, [{Id :: erleans:grain_key(), Type :: module(), Hash :: integer(),
+           ETag :: erleans:etag(), State :: term()}]} | {error, term()}.
 
--callback read(Type :: module(), ProviderName :: atom(), Id :: term()) ->
+-callback read(Type :: module(), ProviderName :: atom(), Id :: erleans:grain_key()) ->
     {ok, State :: any(), ETag :: erleans:etag()} |
     {error, Reason :: term()}.
 
 -callback read_by_hash(Type :: module(), ProviderName :: atom(), Hash :: integer()) ->
-    {ok,  [{GrainRef :: erleans:grain_ref(), Type :: module(), ETag :: erleans:etag(), State :: any()}]} |
+    {ok,  [{Id :: erleans:grain_key(), Type :: module(), ETag :: erleans:etag(), State :: any()}]} |
     {error, not_found}.
 
 %% Insert only if no row with this type and id exists; otherwise return bad_etag.
--callback insert(Type :: module(), ProviderName :: atom(), Id :: any(), State :: any()) -> write_result().
+-callback insert(Type :: module(), ProviderName :: atom(), Id :: erleans:grain_key(), State :: any()) -> write_result().
 
--callback insert(Type :: module(), ProviderName :: atom(), Id :: any(), Hash :: integer(),
+-callback insert(Type :: module(), ProviderName :: atom(), Id :: erleans:grain_key(), Hash :: integer(),
                  State :: any()) -> write_result().
 
--callback update(Type :: module(), ProviderName :: atom(), Id :: any(), State :: any(),
+-callback update(Type :: module(), ProviderName :: atom(), Id :: erleans:grain_key(), State :: any(),
                   ETag :: erleans:etag()) -> write_result().
 
--callback update(Type :: module(), ProviderName :: atom(), Id :: any(), Hash :: integer(),
+-callback update(Type :: module(), ProviderName :: atom(), Id :: erleans:grain_key(), Hash :: integer(),
                   State :: any(), ETag :: erleans:etag()) -> write_result().
 
 start_link(Name, #{module := Module,

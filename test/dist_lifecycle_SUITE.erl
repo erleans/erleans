@@ -27,6 +27,7 @@ init_per_suite(Config) ->
 
 end_per_suite(_) ->
     application:stop(erleans),
+    etag_test_grain:clear_test_keys(),
     ok.
 
 duplicate_activation_reroutes(_Config) ->
@@ -43,7 +44,7 @@ duplicate_activation_reroutes(_Config) ->
         peer:call(PeerPid, application, load, [gen_cluster]),
         peer:call(PeerPid, application, set_env, [gen_cluster, type, {list, []}]),
         {ok, _} = peer:call(PeerPid, application, ensure_all_started, [erleans]),
-        Id = make_ref(),
+        Id = integer_to_binary(erlang:unique_integer([positive])),
         Grain0 = erleans:get_grain(etag_test_grain, Id),
         Grain = Grain0#{provider => {erleans_provider_ets, in_memory}},
         ?assertEqual(a, erleans_grain:call(Grain, get)),
@@ -108,7 +109,7 @@ deactivation_keeps_registration(_Config) ->
 deactivation_keeps_registration(Peer, Kind) ->
     Test = self(),
     Tag = make_ref(),
-    Id = {deactivation_save, Test, Tag},
+    Id = etag_test_grain:test_key({deactivation_save, Test, Tag}),
     Grain0 = erleans:get_grain(etag_test_grain, Id),
     Grain = Grain0#{provider => {opaque_etag_provider, in_memory}},
     ?assertEqual(a, erleans_grain:call(Grain, get)),
@@ -177,7 +178,7 @@ node_loss_reroutes(_Config) ->
         erpc:call(Peer, application, load, [gen_cluster]),
         erpc:call(Peer, application, set_env, [gen_cluster, type, {list, []}]),
         {ok, _} = erpc:call(Peer, application, ensure_all_started, [erleans]),
-        Grain = erleans:get_grain(fault_test_grain, make_ref()),
+        Grain = erleans:get_grain(fault_test_grain, integer_to_binary(erlang:unique_integer([positive]))),
         {ok, RemotePid} = erpc:call(Peer, erleans_grain_sup, start_child, [Grain]),
         ?UNTIL(RemotePid =:= erleans_grain_registry:whereis_name(Grain)),
         Test = self(),

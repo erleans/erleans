@@ -18,22 +18,22 @@ end_per_suite(_) ->
 stateful_placements(_) ->
     lists:foreach(fun(Placement) ->
         ok = erleans_config:set(test_placement, Placement),
-        Grain = erleans:get_grain(placement_test_grain, make_ref()),
+        Grain = erleans:get_grain(placement_test_grain, integer_to_binary(erlang:unique_integer([positive]))),
         ?assertEqual(Placement, maps:get(placement, Grain)),
         assert_activation(Grain)
     end, [prefer_local, random]).
 
 stateless_normalization(_) ->
     ok = erleans_config:set(test_placement, stateless),
-    Default = erleans:get_grain(placement_test_grain, make_ref()),
+    Default = erleans:get_grain(placement_test_grain, integer_to_binary(erlang:unique_integer([positive]))),
     ?assertEqual({stateless, 5}, maps:get(placement, Default)),
     assert_activation(Default),
     ok = erleans_config:set(default_stateless_max, 2),
-    Configured = erleans:get_grain(placement_test_grain, make_ref()),
+    Configured = erleans:get_grain(placement_test_grain, integer_to_binary(erlang:unique_integer([positive]))),
     ?assertEqual({stateless, 2}, maps:get(placement, Configured)),
     assert_activation(Configured),
     ok = erleans_config:set(test_placement, {stateless, 3}),
-    Explicit = erleans:get_grain(placement_test_grain, make_ref()),
+    Explicit = erleans:get_grain(placement_test_grain, integer_to_binary(erlang:unique_integer([positive]))),
     ?assertEqual({stateless, 3}, maps:get(placement, Explicit)),
     assert_activation(Explicit).
 
@@ -41,7 +41,7 @@ unsupported_placement(_) ->
     lists:foreach(fun(Placement) ->
         ok = erleans_config:set(test_placement, Placement),
         ?assertError({invalid_placement, Placement},
-                     erleans:get_grain(placement_test_grain, make_ref()))
+                     erleans:get_grain(placement_test_grain, integer_to_binary(erlang:unique_integer([positive]))))
     end, [system_grain, unsupported]).
 
 assert_activation(Grain) ->
