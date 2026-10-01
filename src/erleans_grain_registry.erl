@@ -24,6 +24,7 @@ Erleans Grain registry.
 -include("erleans.hrl").
 
 -export([register_name/2,
+         resolve_name/3,
          unregister_name/1,
          unregister_name/2,
          whereis_name/1,
@@ -36,7 +37,20 @@ Erleans Grain registry.
 
 -spec register_name(Name :: erleans:grain_ref(), Pid :: pid()) -> yes | no.
 register_name(Name, Pid) when is_pid(Pid) ->
-    global:register_name(Name, Pid).
+    global:register_name(Name, Pid, fun ?MODULE:resolve_name/3).
+
+-spec resolve_name(term(), pid(), pid()) -> pid().
+resolve_name(_Name, Pid, Pid) ->
+    Pid;
+resolve_name(_Name, Pid1, Pid2) ->
+    %% Choose the same owner regardless of argument order. Use an external
+    %% resolver fun so global does not retain an old version of this module.
+    {Winner, Loser} = case {node(Pid1), Pid1} < {node(Pid2), Pid2} of
+                         true -> {Pid1, Pid2};
+                         false -> {Pid2, Pid1}
+                     end,
+    exit(Loser, {shutdown, duplicate_activation}),
+    Winner.
 
 -spec unregister_name(Name :: erleans:grain_ref()) -> ok.
 unregister_name(Name) ->

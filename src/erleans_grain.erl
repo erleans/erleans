@@ -426,6 +426,8 @@ timer_check(Data) ->
 handle_event(_, {cancel_timer, _Pid, _TimeLeft}, _, _Data) ->
     %% filter these out
     keep_state_and_data;
+handle_event(info, {'EXIT', _, {shutdown, duplicate_activation}=Reason}, _, Data) ->
+    {stop, Reason, Data};
 handle_event(info, {'EXIT', _, Reason}, _, Data) ->
     {stop, {shutdown, Reason}, Data};
 handle_event(_, Message, _, Data=#data{cb_module=CbModule,
@@ -445,6 +447,11 @@ code_change(_OldVsn, State, Data, _Extra) ->
     {ok, State, Data}.
 
 terminate({shutdown, deactivated}, _State, #data{ref=GrainRef}) ->
+    maybe_remove_worker(GrainRef),
+    ok;
+terminate({shutdown, duplicate_activation}, _State, #data{ref=GrainRef}) ->
+    %% Ownership belongs to the resolver's winner. Do not save the loser's
+    %% state or unregister the winner through the normal shutdown path.
     maybe_remove_worker(GrainRef),
     ok;
 terminate(?NO_PROVIDER_ERROR, _State, #data{cb_module=CbModule,

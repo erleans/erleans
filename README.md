@@ -21,6 +21,10 @@ Activations are registered through
 [global](https://www.erlang.org/doc/apps/kernel/global.html) by default.
 The registration is retained until `deactivate/1` and any state save it requests
 have completed, so a replacement activation reads the completed save.
+When disconnected directories merge with duplicate activations, a custom resolver
+selects one owner and stops the loser with `{shutdown, duplicate_activation}`.
+The loser skips `deactivate/1` and state saving and does not unregister the winner.
+Pending calls through grain references can then re-route to the surviving owner.
 
 Exceptions raised by `handle_call/3` are returned to the calling process and
 re-raised with their original class, reason, and callback stacktrace. The

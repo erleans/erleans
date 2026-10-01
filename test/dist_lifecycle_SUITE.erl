@@ -9,6 +9,7 @@
          init_per_suite/1,
          end_per_suite/1,
          node_loss_reroutes/1,
+         duplicate_activation_reroutes/1,
          deactivation_keeps_registration/1,
          manual_start_stop/1]).
 
@@ -17,7 +18,8 @@
 -include("test_utils.hrl").
 
 all() ->
-    [manual_start_stop, node_loss_reroutes, deactivation_keeps_registration].
+    [manual_start_stop, node_loss_reroutes, deactivation_keeps_registration,
+     duplicate_activation_reroutes].
 
 init_per_suite(Config) ->
     {ok, _} = application:ensure_all_started(erleans),
@@ -26,6 +28,68 @@ init_per_suite(Config) ->
 end_per_suite(_) ->
     application:stop(erleans),
     ok.
+
+duplicate_activation_reroutes(_Config) ->
+    Paths = ["-config", "../../../../test/sys.config", "-pa" | code:get_path()],
+    %% Control the peer over stdio so the two directories start isolated.
+    %% Its name sorts first, making the local activation the conflict loser.
+    {ok, PeerPid, Peer} = peer:start_link(#{name => peer:random_name("a-duplicate"),
+                                          connection => standard_io,
+                                          args => ["-setcookie", atom_to_list(erlang:get_cookie())
+                                                   | Paths]}),
+    true = is_pid(PeerPid),
+    try
+        ?assert(Peer < node()),
+        peer:call(PeerPid, application, load, [gen_cluster]),
+        peer:call(PeerPid, application, set_env, [gen_cluster, type, {list, []}]),
+        {ok, _} = peer:call(PeerPid, application, ensure_all_started, [erleans]),
+        Id = make_ref(),
+        Grain0 = erleans:get_grain(etag_test_grain, Id),
+        Grain = Grain0#{provider => {erleans_provider_ets, in_memory}},
+        ?assertEqual(a, erleans_grain:call(Grain, get)),
+        Loser = erleans_grain_registry:whereis_name(Grain),
+        {module, etag_test_grain} = peer:call(PeerPid, code, ensure_loaded, [etag_test_grain]),
+        {ok, Winner} = peer:call(PeerPid, erleans_grain_sup, start_child, [Grain]),
+        ?assertNot(lists:member(Peer, nodes())),
+        ?assertEqual(Loser, erleans_grain_registry:whereis_name(Grain)),
+        ?assertEqual(Winner, peer:call(PeerPid, erleans_grain_registry, whereis_name, [Grain])),
+        Monitor = monitor(process, Loser),
+        Test = self(),
+        Tag = make_ref(),
+        Callers = [spawn_monitor(fun() ->
+            Test ! {Tag, result, erleans_grain:call(Grain, {pending_on, node(), Test, Tag})}
+        end) || _ <- lists:seq(1, 3)],
+        [receive {Tag, pending, Loser} -> ok
+         after 1000 -> ct:fail(call_not_pending)
+         end || _ <- Callers],
+
+        %% Merging the directories must invoke the registered resolver.
+        pong = net_adm:ping(Peer),
+        ok = global:sync(),
+        receive {'DOWN', Monitor, process, Loser, Reason} ->
+            ?assertEqual({shutdown, duplicate_activation}, Reason)
+        after 5000 -> ct:fail(duplicate_not_stopped)
+        end,
+        [begin
+             receive {Tag, result, Result} -> ?assertEqual(Winner, Result)
+             after 1000 -> ct:fail(call_not_rerouted)
+             end,
+             receive {'DOWN', M, process, P, normal} -> ok
+             after 1000 -> ct:fail(caller_failed)
+             end
+         end || {P, M} <- Callers],
+        ?assertEqual(Winner, erleans_grain_registry:whereis_name(Grain)),
+        ?assertEqual(Winner, peer:call(PeerPid, erleans_grain_registry, whereis_name, [Grain])),
+        %% The loser's deactivate callback would save its dirty in-memory state.
+        ?assertEqual({ok, #{value => a}, 1},
+                     erleans_provider_ets:read(etag_test_grain, in_memory, Id)),
+        ?assertEqual({ok, #{value => a}, 1},
+                     peer:call(PeerPid, erleans_provider_ets, read,
+                               [etag_test_grain, in_memory, Id])),
+        ?assertEqual(a, erleans_grain:call(Grain, get))
+    after
+        peer:stop(PeerPid)
+    end.
 
 deactivation_keeps_registration(_Config) ->
     Paths = ["-config", "../../../../test/sys.config", "-pa" | code:get_path()],

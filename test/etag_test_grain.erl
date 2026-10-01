@@ -22,6 +22,14 @@ activate(_, State) ->
 
 handle_call({deactivate, Test, Tag, Kind}, From, State) ->
     {deactivate, {{Test, Tag, Kind}, State}, [{reply, From, ok}]};
+handle_call({pending_on, Node, Test, Tag}, From, State) ->
+    case node() of
+        Node ->
+            Test ! {Tag, pending, self()},
+            {ok, State#{value => unsaved}};
+        _ ->
+            {ok, State, [{reply, From, self()}]}
+    end;
 handle_call(state, From, State) ->
     {ok, State, [{reply, From, State}]};
 handle_call(get, From, State = #{value := Value}) ->
