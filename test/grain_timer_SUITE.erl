@@ -14,6 +14,7 @@
          single_timer/1,
          multiple_timers/1,
          crashy_timer/1,
+         stray_timer_message/1,
          recover_with_one_shots/1,
          timer_requests_during_deactivation/1,
          timer_shutdown/1]).
@@ -28,7 +29,8 @@ all() ->
      {group, deactivate_after_30}].
 
 groups() ->
-    [{defaults, [], [single_timer, multiple_timers, crashy_timer, recover_with_one_shots,
+    [{defaults, [], [single_timer, multiple_timers, crashy_timer, stray_timer_message,
+                    recover_with_one_shots,
                     timer_requests_during_deactivation]},
      {deactivate_after_30, [], [timer_shutdown]}].
 
@@ -107,6 +109,21 @@ crashy_timer(_Config) ->
     ?assertEqual([a, a, a, a, a, {erleans_timer_error,exit,boom}],
                  lists:reverse(Acc)),
     ok.
+
+stray_timer_message(_Config) ->
+    Grain = erleans:get_grain(?g, <<"stray-timer-message">>),
+    Callback = fun(_, _) -> ok end,
+    {ok, TimerPid} = erleans_grain:call(Grain, {start_timer, Callback, 60000, 1000}),
+    true = is_pid(TimerPid),
+    GrainPid = erleans_grain_registry:whereis_name(Grain),
+    Monitor = monitor(process, TimerPid),
+    TimerPid ! stray,
+    receive {'DOWN', Monitor, process, TimerPid, normal} -> ok
+    after 1000 -> ct:fail(timer_not_stopped)
+    end,
+    ?assertEqual({ok, [{erleans_timer_unexpected_msg, stray}]}, ?g:clear(GrainPid)),
+    ?assertEqual(GrainPid, erleans_grain_registry:whereis_name(Grain)),
+    ?assertEqual({ok, node()}, ?g:node(GrainPid)).
 
 recover_with_one_shots(_Config) ->
     Grain = erleans:get_grain(?g, <<"recover-with-one-shots">>),

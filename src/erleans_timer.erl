@@ -191,7 +191,9 @@ loop(FireTime, #timer{grain = Pid,
                     unlink(Pid)
             end;
         Msg ->
-            Pid ! {erleans_timer_unexpected_msg, Msg}
+            Pid ! {erleans_timer_unexpected_msg, Msg},
+            unlink(Pid),
+            ok
     end.
 
 start_timer(StartTime, Timer) ->
