@@ -396,6 +396,12 @@ deactivating(enter, _OldState, Data) ->
     timer_check(Data);
 deactivating(state_timeout, check_timers, Data) ->
     timer_check(Data);
+deactivating({call, _}=EventType, {leave_timer, _, _}=Event, Data) ->
+    %% Let in-flight timer callbacks finish without reviving the grain or
+    %% replacing the check_timers timeout.
+    active(EventType, Event, Data);
+deactivating(cast, {leave_timer, _}=Event, Data) ->
+    active(cast, Event, Data);
 deactivating({call, _}, {refresh_timer, _, _}, Data) ->
     erleans_timer:recover(),
     {next_state, active, Data, [postpone]};

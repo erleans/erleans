@@ -133,6 +133,8 @@ handle_call(stop, From, State) ->
 handle_call(save, From, State) ->
     {ok, State, [{reply, From, ok}, save_state]}.
 
+handle_cast({accumulate, Thing}, State=#{acc := Acc}) ->
+    {ok, State#{acc => [Thing | Acc]}};
 handle_cast(_, State) ->
     {ok, State}.
 

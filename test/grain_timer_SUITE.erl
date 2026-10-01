@@ -15,6 +15,7 @@
          multiple_timers/1,
          crashy_timer/1,
          recover_with_one_shots/1,
+         timer_requests_during_deactivation/1,
          timer_shutdown/1]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -27,7 +28,8 @@ all() ->
      {group, deactivate_after_30}].
 
 groups() ->
-    [{defaults, [], [single_timer, multiple_timers, crashy_timer, recover_with_one_shots]},
+    [{defaults, [], [single_timer, multiple_timers, crashy_timer, recover_with_one_shots,
+                    timer_requests_during_deactivation]},
      {deactivate_after_30, [], [timer_shutdown]}].
 
 init_per_suite(Config) ->
@@ -146,6 +148,40 @@ recover_with_one_shots(_Config) ->
     ?assertEqual(Pid, erleans_grain_registry:whereis_name(Grain)),
     ?assertEqual({ok, node()}, ?g:node(Pid)),
     ok = ?g:cancel_one_timer(Pid).
+
+timer_requests_during_deactivation(_Config) ->
+    Grain = erleans:get_grain(?g, <<"timer-requests-during-deactivation">>),
+    Test = self(),
+    Callback = fun(Ref, _) ->
+                       Test ! {timer_started, self()},
+                       receive call_grain -> ok end,
+                       ok = ?g:accumulate(Ref, call),
+                       ok = erleans_grain:cast(Ref, {accumulate, cast}),
+                       Test ! {timer_reply, self(), ?g:clear(Ref)},
+                       receive finish -> ok end
+               end,
+    {ok, TimerPid} = erleans_grain:call(Grain, {start_timer, Callback, 0, never}),
+    true = is_pid(TimerPid),
+    receive {timer_started, TimerPid} -> ok
+    after 1000 -> ct:fail(timer_not_started)
+    end,
+    Pid = erleans_grain_registry:whereis_name(Grain),
+    GrainMonitor = monitor(process, Pid),
+    TimerMonitor = monitor(process, TimerPid),
+    ok = ?g:stop(Pid),
+    ?assertMatch({deactivating, _}, sys:get_state(Pid)),
+    TimerPid ! call_grain,
+    receive {timer_reply, TimerPid, Reply} -> ?assertEqual({ok, [cast, call]}, Reply)
+    after 1000 -> ct:fail(timer_call_not_replied)
+    end,
+    ?assertMatch({deactivating, _}, sys:get_state(Pid)),
+    TimerPid ! finish,
+    receive {'DOWN', TimerMonitor, process, TimerPid, normal} -> ok
+    after 1000 -> ct:fail(timer_not_finished)
+    end,
+    receive {'DOWN', GrainMonitor, process, Pid, {shutdown, deactivated}} -> ok
+    after 1000 -> ct:fail(grain_not_deactivated)
+    end.
 
 timer_shutdown(_Config) ->
     Grain = erleans:get_grain(timer_test_grain, <<"shutdown-timer-test-grain">>),
