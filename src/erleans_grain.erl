@@ -237,10 +237,6 @@ route(GrainRef, Fun, _Deadline) ->
 
 activate_grain(GrainRef=#{placement := Placement}) ->
     case Placement of
-        {stateless, N} ->
-            activate_stateless(GrainRef, N);
-        stateless ->
-            activate_stateless(GrainRef, erleans_config:get(max_stateless));
         prefer_local ->
             activate_local(GrainRef);
         random ->
@@ -248,10 +244,6 @@ activate_grain(GrainRef=#{placement := Placement}) ->
         %% load ->
         %%  load placement
     end.
-
-%% Stateless are always activated on the local node if <N exist already on the node
-activate_stateless(GrainRef, _N) ->
-    erleans_grain_sup:start_child(GrainRef).
 
 %% Activate on the local node
 activate_local(GrainRef) ->

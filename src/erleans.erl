@@ -24,14 +24,11 @@
 
 -type grain_ref() :: #{implementing_module := module(),
                        id                  := term(),
-                       placement           := grain_placement(),
+                       placement           := normalized_placement(),
                        provider            => provider() | undefined}.
 
--type grain_placement() :: random |
-                           prefer_local |
-                           stateless |
-                           {stateless, integer()} |
-                           system_grain. %% | load
+-type normalized_placement() :: random | prefer_local | {stateless, integer()}.
+-type grain_placement() :: stateless | normalized_placement().
 
 %% An opaque concurrency token owned by the storage provider.
 %% undefined is reserved for state which has not been read or inserted.
@@ -82,7 +79,7 @@ find_provider_config(Name) ->
             {Module, Name}
     end.
 
--spec placement(module()) -> grain_placement().
+-spec placement(module()) -> normalized_placement().
 placement(Module) ->
     case erleans_utils:fun_or_default(Module, placement, ?DEFAULT_PLACEMENT) of
         stateless ->
@@ -90,7 +87,8 @@ placement(Module) ->
         Placement = {stateless, Max} when is_integer(Max) ->
             Placement;
         Placement when Placement =:= random;
-                       Placement =:= prefer_local;
-                       Placement =:= system_grain ->
-            Placement
+                       Placement =:= prefer_local ->
+            Placement;
+        Placement ->
+            error({invalid_placement, Placement})
     end.

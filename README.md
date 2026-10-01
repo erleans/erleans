@@ -100,6 +100,11 @@ No starting or linking, a grain is activated when it is sent a request if an act
 * `stateless`: Stateless grains are always local. If no local activation to the request exists one is created up to a default maximum value.
 * `{stateless, Max :: integer()}`: Allows for up to `Max` number of activations for a grain to exist per node. A new activation, up until `Max` exist on the node, will be created for a request if an existing activation is not currently busy.
 
+`get_grain/2` normalizes `stateless` to `{stateless, N}`, where `N` is the
+`default_stateless_max` setting (5 by default). Unsupported placement values,
+including the removed `system_grain` placement, raise `{invalid_placement, Value}`
+when building the grain reference.
+
 ### Erlang Example
 
 The grain implementation `test_grain` is found in `test/`:

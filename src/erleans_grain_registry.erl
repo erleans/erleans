@@ -67,8 +67,6 @@ unregister_name(Name, _Pid) ->
     ok.
 
 -spec whereis_name(GrainRef :: erleans:grain_ref()) -> pid() | undefined.
-whereis_name(GrainRef=#{placement := stateless}) ->
-    whereis_stateless(GrainRef);
 whereis_name(GrainRef=#{placement := {stateless, _}}) ->
     whereis_stateless(GrainRef);
 whereis_name(GrainRef) ->
