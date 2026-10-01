@@ -143,7 +143,10 @@ call(GrainRef, Request, Timeout) ->
                        try
                            gen_statem:call(Pid, {ReqType, CallId, Request}, remaining_timeout(Deadline))
                        catch
-                           exit:{bad_etag, _} ->
+                           exit:{Reason, {gen_statem, call, _}}
+                             when Reason =:= bad_etag;
+                                  is_tuple(Reason), tuple_size(Reason) =:= 3,
+                                  element(1, Reason) =:= bad_etag ->
                                ?LOG_ERROR("at=grain_exit reason=bad_etag", []),
                                {exit, saved_etag_changed}
                        end

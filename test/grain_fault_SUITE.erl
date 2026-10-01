@@ -37,7 +37,8 @@ callback_exceptions(_) ->
             receive {Tag, invoked, _} -> ct:fail(callback_replayed) after 0 -> ok end
         end, [{error, badarg}, {throw, thrown}, {exit, shutdown},
               {exit, {shutdown, deactivated}}, {exit, noconnection},
-              {exit, {noproc, {gen_statem, call, []}}}, {exit, bad_etag}]),
+              {exit, {noproc, {gen_statem, call, []}}}, {exit, bad_etag},
+              {exit, {bad_etag, old, new}}]),
         ?assertEqual(2, erleans_grain:call(Grain, increment)),
         %% Ordinary reply data cannot be confused with an exception envelope.
         Reply = {'$erleans_callback_error', make_ref(), error, data, []},

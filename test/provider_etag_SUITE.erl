@@ -4,10 +4,12 @@
          versions/1, concurrent_insert/1, concurrent_update/1,
          grain_keys_and_hashes/1, opaque_tokens/1,
          activation_insert_conflict/1, storage_failures/1,
+         pending_calls_on_conflict/1,
          activation_mutations_require_save/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
+-include("test_utils.hrl").
 
 -define(provider, erleans_provider_ets).
 -define(store, in_memory).
@@ -15,7 +17,7 @@
 all() ->
     [versions, concurrent_insert, concurrent_update, grain_keys_and_hashes,
      opaque_tokens, activation_insert_conflict, storage_failures,
-     activation_mutations_require_save].
+     pending_calls_on_conflict, activation_mutations_require_save].
 
 init_per_suite(Config) ->
     {ok, _} = application:ensure_all_started(erleans),
@@ -106,6 +108,47 @@ activation_insert_conflict(_) ->
     after 1000 -> ct:fail(activation_did_not_reject_conflict)
     end,
     ?assertEqual({ok, Winner, <<"version:1">>}, read(Id)).
+
+pending_calls_on_conflict(_) ->
+    lists:foreach(fun(Shape) ->
+        Test = self(),
+        Tag = make_ref(),
+        Id = {conflict, Shape, Test, Tag},
+        Grain = grain(Id),
+        ?assertEqual(a, erleans_grain:call(Grain, get)),
+        Pid = erleans_grain_registry:whereis_name(Grain),
+        true = is_pid(Pid),
+        Monitor = monitor(process, Pid),
+        SaveCaller = spawn_monitor(fun() ->
+            Test ! {Tag, self(), erleans_grain:call(Grain, save)}
+        end),
+        receive {Tag, saving, Pid} -> ok
+        after 1000 -> ct:fail(save_not_started)
+        end,
+        Readers = [spawn_monitor(fun() ->
+            Test ! {Tag, self(), erleans_grain:call(Target, get)}
+        end) || Target <- [Grain, Pid]],
+        ?UNTIL(begin
+            {messages, Messages} = process_info(Pid, messages),
+            length([ok || {'$gen_call', _, _} <- Messages]) =:= 2
+        end),
+        %% Simulate a competing writer while the grain's save is blocked.
+        {ok, 2} = ?provider:update(etag_test_grain, ?store, Id, #{value => winner}, 1),
+        Pid ! {Tag, finish_save},
+        [begin
+             receive {Tag, Caller, Result} -> ?assertEqual({exit, saved_etag_changed}, Result)
+             after 1000 -> ct:fail({missing_conflict_result, Shape})
+             end,
+             receive {'DOWN', M, process, Caller, normal} -> ok
+             after 1000 -> ct:fail(caller_failed)
+             end
+         end || {Caller, M} <- [SaveCaller | Readers]],
+        receive {'DOWN', Monitor, process, Pid, _} -> ok
+        after 1000 -> ct:fail(stale_activation_survived)
+        end,
+        ?assertEqual(undefined, erleans_grain_registry:whereis_name(Grain)),
+        ?assertEqual({ok, #{value => winner}, <<"version:2">>}, read(Id))
+    end, [bare, detailed]).
 
 storage_failures(_) ->
     ?assertExit({noproc, read_failed}, erleans_grain:call(grain(read_failure), get)),

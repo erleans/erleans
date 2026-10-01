@@ -31,6 +31,13 @@ insert(Type, Name, Id, Hash, State) ->
     result(erleans_provider_ets:insert(Type, Name, Id, Hash, State)).
 
 update(_, _, write_failure, _, _) -> {error, write_failed};
+update(_, _, {conflict, Shape, Test, Tag}, _, ETag) ->
+    Test ! {Tag, saving, self()},
+    receive {Tag, finish_save} -> ok end,
+    case Shape of
+        bare -> {error, bad_etag};
+        detailed -> {error, {bad_etag, ETag, <<"version:2">>}}
+    end;
 update(Type, Name, Id = {deactivation_save, Test, Tag}, State = #{value := saved}, ETag) ->
     Test ! {Tag, saving, self()},
     receive {Tag, finish_save} -> ok end,
