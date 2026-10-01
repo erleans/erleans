@@ -20,6 +20,28 @@ Grain state is persisted through a storage provider which owns its change id or 
 Activations are registered through
 [global](https://www.erlang.org/doc/apps/kernel/global.html) by default.
 
+Exceptions raised by `handle_call/3` are returned to the calling process and
+re-raised with their original class, reason, and callback stacktrace. The
+activation keeps its last successfully returned state and continues processing
+queued requests. Exceptions in `handle_cast/2` and `handle_info/2` are logged and
+also leave the activation running. These exceptions do not invoke deactivation
+or automatically save state; external side effects performed before the exception
+are not rolled back. Activation failures, invalid callback results, and errors
+while executing actions such as `save_state` remain fatal.
+
+Calls through grain references re-resolve the activation after transport exits
+caused by normal termination, `noproc`, `shutdown`, `{shutdown, _}`,
+`{nodedown, _}`, or `noconnection`. This applies to stateful and stateless grains.
+There are at most five retries, separated by 10 milliseconds, and attempts use
+the remaining call timeout rather than resetting it. Stateless pool waits also
+respect the remaining budget. Calls directly to a PID cannot be re-routed.
+Callback exceptions, request timeouts, storage conflicts, and explicit activation
+errors are not retried. Casts remain asynchronous and do not acknowledge delivery.
+
+A transport failure can happen after a request has executed but before its reply
+arrives. Retrying that request can repeat side effects; operations which need to
+avoid duplicates should use application-level request IDs and deduplication.
+
 ### Stateless Grains
 
 Stateless grains have no restriction on the number of activations and do not persist state to a database.

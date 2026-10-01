@@ -50,6 +50,9 @@ depending on incoming requests and configuration.
 
 -define(DEFAULT_TIMEOUT, 5000).
 -define(NO_PROVIDER_ERROR, no_provider_configured).
+-define(ROUTING_RETRIES, 5).
+-define(RETRY_DELAY, 10).
+-define(CALLBACK_ERROR, '$erleans_callback_error').
 
 -type cb_state() :: {EphemeralState :: term(), PersistentState :: term()} | term().
 
@@ -126,28 +129,38 @@ start_link(GrainRef) ->
             {error, notfound}
     end.
 
--spec call(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
+-spec call(GrainRef :: erleans:grain_ref() | pid(), Request :: term()) -> Reply :: term().
 call(GrainRef, Request) ->
     call(GrainRef, Request, ?DEFAULT_TIMEOUT).
 
--spec call(GrainRef :: erleans:grain_ref(), Request :: term(), non_neg_integer() | infinity) -> Reply :: term().
+-spec call(GrainRef :: erleans:grain_ref() | pid(), Request :: term(), non_neg_integer() | infinity) -> Reply :: term().
 call(GrainRef, Request, Timeout) ->
     ReqType = req_type(),
-    do_for_ref(GrainRef,
+    CallId = make_ref(),
+    Deadline = deadline(Timeout),
+    Reply = do_for_ref(GrainRef,
                fun(_, Pid) ->
                        try
-                           gen_statem:call(Pid, {ReqType, Request}, Timeout)
+                           gen_statem:call(Pid, {ReqType, CallId, Request}, remaining_timeout(Deadline))
                        catch
                            exit:{bad_etag, _} ->
                                ?LOG_ERROR("at=grain_exit reason=bad_etag", []),
                                {exit, saved_etag_changed}
                        end
-               end).
+               end, Deadline, ?ROUTING_RETRIES),
+    %% Raise only after routing and pool claiming have completed. A callback
+    %% may itself exit with a reason that looks like a transport failure.
+    case Reply of
+        {?CALLBACK_ERROR, CallId, Class, Reason, Stacktrace} ->
+            erlang:raise(Class, Reason, Stacktrace);
+        _ -> Reply
+    end.
 
--spec cast(GrainRef :: erleans:grain_ref(), Request :: term()) -> Reply :: term().
+-spec cast(GrainRef :: erleans:grain_ref() | pid(), Request :: term()) -> Reply :: term().
 cast(GrainRef, Request) ->
     ReqType = req_type(),
-    do_for_ref(GrainRef, fun(_, Pid) -> gen_statem:cast(Pid, {ReqType, Request}) end).
+    do_for_ref(GrainRef, fun(_, Pid) -> gen_statem:cast(Pid, {ReqType, Request}) end,
+               infinity, ?ROUTING_RETRIES).
 
 req_type() ->
     case get(req_type) of
@@ -157,41 +170,69 @@ req_type() ->
             ReqType
     end.
 
-do_for_ref(GrainPid, Fun) when is_pid(GrainPid) ->
+deadline(infinity) -> infinity;
+deadline(Timeout) -> erlang:monotonic_time(millisecond) + Timeout.
+
+remaining_timeout(infinity) -> infinity;
+remaining_timeout(Deadline) -> max(0, Deadline - erlang:monotonic_time(millisecond)).
+
+do_for_ref(GrainPid, Fun, _Deadline, _Retries) when is_pid(GrainPid) ->
     Fun(noname, GrainPid);
-do_for_ref(GrainRef=#{placement := {stateless, _N}}, Fun) ->
-    case erleans_stateless:pick_grain(GrainRef, Fun) of
+do_for_ref(GrainRef, Fun, Deadline, Retries) ->
+    try route(GrainRef, Fun, Deadline)
+    catch
+        exit:Reason:Stacktrace ->
+            TimeLeft = remaining_timeout(Deadline),
+            case Retries > 0 andalso retryable_exit(Reason)
+                 andalso (TimeLeft =:= infinity orelse TimeLeft > ?RETRY_DELAY) of
+                true ->
+                    %% Give registry/pool monitors time to remove the old owner.
+                    timer:sleep(?RETRY_DELAY),
+                    do_for_ref(GrainRef, Fun, Deadline, Retries - 1);
+                false ->
+                    erlang:raise(exit, Reason, Stacktrace)
+            end
+    end.
+
+retryable_exit({Reason, {Module, call, _}}) when Module =:= gen_statem; Module =:= gen_server ->
+    retryable_reason(Reason);
+retryable_exit({nodedown, _}) -> true;
+retryable_exit(noconnection) -> true;
+retryable_exit(_) -> false.
+
+retryable_reason(normal) -> true;
+retryable_reason(noproc) -> true;
+retryable_reason(shutdown) -> true;
+retryable_reason({shutdown, _}) -> true;
+retryable_reason({nodedown, _}) -> true;
+retryable_reason(noconnection) -> true;
+retryable_reason(_) -> false.
+
+route(GrainRef=#{placement := {stateless, _N}}, Fun, Deadline) ->
+    case erleans_stateless:pick_grain(GrainRef, Fun, remaining_timeout(Deadline)) of
         {ok, Res} ->
             Res;
         _ ->
             exit(timeout)
     end;
-do_for_ref(GrainRef, Fun) ->
-    try
-        case erleans_grain_registry:whereis_name(GrainRef) of
-            Pid when is_pid(Pid) ->
-                Fun(noname, Pid);
-            undefined ->
-                ?LOG_INFO("start=~p", [GrainRef]),
-                case activate_grain(GrainRef) of
-                    {ok, undefined} ->
-                        %% the only way the Pid could be `undefined`
-                        %% is an ignore from the statem, which can
-                        %% only happen for `{error, notfound}`
-                        exit({noproc, notfound});
-                    {ok, Pid} ->
-                        Fun(noname, Pid);
-                    {error, {already_started, Pid}} ->
-                        Fun(noname, Pid);
-                    {error, Error} ->
-                        exit({noproc, Error})
-                end
-        end
-    catch
-        %% Retry only if the process deactivated
-        exit:{Reason, _} when Reason =:= {shutdown, deactivated}
-                            ; Reason =:= normal ->
-            do_for_ref(GrainRef, Fun)
+route(GrainRef, Fun, _Deadline) ->
+    case erleans_grain_registry:whereis_name(GrainRef) of
+        Pid when is_pid(Pid) ->
+            Fun(noname, Pid);
+        undefined ->
+            ?LOG_INFO("start=~p", [GrainRef]),
+            case activate_grain(GrainRef) of
+                {ok, undefined} ->
+                    %% The only way the Pid could be undefined is an ignore
+                    %% from the statem for {error, notfound}.
+                    exit({noproc, notfound});
+                {ok, Pid} ->
+                    Fun(noname, Pid);
+                {error, {already_started, Pid}} ->
+                    Fun(noname, Pid);
+                {error, Error} ->
+                    exit({noproc, Error})
+            end
     end.
 
 activate_grain(GrainRef=#{placement := Placement}) ->
@@ -321,14 +362,27 @@ callback_mode() ->
 
 active(enter, _OldState, Data=#data{deactivate_after=DeactivateAfter}) ->
     {keep_state, Data, [{state_timeout, DeactivateAfter, activation_expiry}]};
-active({call, From}, {ReqType, Msg}, Data=#data{cb_module=CbModule,
+active({call, From}, {ReqType, CallId, Msg}, Data=#data{cb_module=CbModule,
                                                 cb_state=CbData,
                                                 deactivate_after=DeactivateAfter}) ->
-    handle_result(CbModule:handle_call(Msg, From, CbData), Data, upd_timer(ReqType, DeactivateAfter));
+    Actions = upd_timer(ReqType, DeactivateAfter),
+    try CbModule:handle_call(Msg, From, CbData) of
+        Result -> handle_result(Result, Data, Actions)
+    catch Class:Reason:Stacktrace ->
+        log_callback_error(CbModule, handle_call, Class, Reason, Stacktrace),
+        {keep_state, Data,
+         [{reply, From, {?CALLBACK_ERROR, CallId, Class, Reason, Stacktrace}} | Actions]}
+    end;
 active(cast, {ReqType, Msg}, Data=#data{cb_module=CbModule,
                                         cb_state=CbData,
                                         deactivate_after=DeactivateAfter}) ->
-    handle_result(CbModule:handle_cast(Msg, CbData), Data, upd_timer(ReqType, DeactivateAfter));
+    Actions = upd_timer(ReqType, DeactivateAfter),
+    try CbModule:handle_cast(Msg, CbData) of
+        Result -> handle_result(Result, Data, Actions)
+    catch Class:Reason:Stacktrace ->
+        log_callback_error(CbModule, handle_cast, Class, Reason, Stacktrace),
+        {keep_state, Data, Actions}
+    end;
 active(state_timeout, activation_expiry, Data) ->
     {next_state, deactivating, Data};
 active(EventType, Event, Data) ->
@@ -340,6 +394,9 @@ deactivating(enter, _OldState, Data) ->
     timer_check(Data);
 deactivating(state_timeout, check_timers, Data) ->
     timer_check(Data);
+deactivating({call, _}, {refresh_timer, _, _}, Data) ->
+    erleans_timer:recover(),
+    {next_state, active, Data, [postpone]};
 deactivating(_EventType, {refresh_timer, _}, Data) ->
     %% restart the timers
     erleans_timer:recover(),
@@ -365,8 +422,16 @@ handle_event(info, {'EXIT', _, Reason}, _, Data) ->
     {stop, {shutdown, Reason}, Data};
 handle_event(_, Message, _, Data=#data{cb_module=CbModule,
                                        cb_state=CbData}) ->
-    Reply = erleans_utils:fun_or_default(CbModule, handle_info, 2, [Message, CbData], {ok, CbData}),
-    handle_result(Reply, Data, []).
+    try erleans_utils:fun_or_default(CbModule, handle_info, 2, [Message, CbData], {ok, CbData}) of
+        Reply -> handle_result(Reply, Data, [])
+    catch Class:Reason:Stacktrace ->
+        log_callback_error(CbModule, handle_info, Class, Reason, Stacktrace),
+        {keep_state, Data}
+    end.
+
+log_callback_error(Module, Callback, Class, Reason, Stacktrace) ->
+    ?LOG_ERROR("grain callback failed: module=~p callback=~p class=~p reason=~p stacktrace=~p",
+               [Module, Callback, Class, Reason, Stacktrace]).
 
 code_change(_OldVsn, State, Data, _Extra) ->
     {ok, State, Data}.

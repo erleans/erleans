@@ -8,13 +8,15 @@
 -export([all/0,
          init_per_suite/1,
          end_per_suite/1,
+         node_loss_reroutes/1,
          manual_start_stop/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("common_test/include/ct.hrl").
+-include("test_utils.hrl").
 
 all() ->
-    [manual_start_stop].
+    [manual_start_stop, node_loss_reroutes].
 
 init_per_suite(Config) ->
     {ok, _} = application:ensure_all_started(erleans),
@@ -23,6 +25,46 @@ init_per_suite(Config) ->
 end_per_suite(_) ->
     application:stop(erleans),
     ok.
+
+node_loss_reroutes(_Config) ->
+    Paths = ["-config", "../../../../test/sys.config", "-pa" | code:get_path()],
+    {ok, PeerPid, Peer} = ?CT_PEER(Paths),
+    true = is_pid(PeerPid),
+    try
+        erpc:call(Peer, application, load, [gen_cluster]),
+        erpc:call(Peer, application, set_env, [gen_cluster, type, {list, []}]),
+        {ok, _} = erpc:call(Peer, application, ensure_all_started, [erleans]),
+        Grain = erleans:get_grain(fault_test_grain, make_ref()),
+        {ok, RemotePid} = erpc:call(Peer, erleans_grain_sup, start_child, [Grain]),
+        ?UNTIL(RemotePid =:= erleans_grain_registry:whereis_name(Grain)),
+        Test = self(),
+        Tag = make_ref(),
+        {Caller, Monitor} = spawn_monitor(fun() ->
+            Result = erleans_grain:call(Grain, {block_on, Peer, Test, Tag}),
+            Test ! {Tag, result, Result}
+        end),
+        receive {Tag, blocked, RemotePid} -> ok
+        after 1000 -> ct:fail(remote_call_not_started)
+        end,
+        %% Halt the node while the call is in flight, before it can reply.
+        ok = erpc:cast(Peer, erlang, halt, []),
+        NewPid = receive
+                     {Tag, result, Pid} when is_pid(Pid) -> Pid;
+                     {'DOWN', Monitor, process, Caller, Reason} -> ct:fail({caller_failed, Reason})
+                 after 5000 -> ct:fail(call_not_rerouted)
+                 end,
+        ?assertEqual(node(), node(NewPid)),
+        ?assertNotEqual(RemotePid, NewPid),
+        ?assertEqual(NewPid, erleans_grain_registry:whereis_name(Grain)),
+        receive {'DOWN', Monitor, process, Caller, normal} -> ok
+        after 1000 -> ct:fail(caller_failed)
+        end
+    after
+        case is_process_alive(PeerPid) of
+            true -> peer:stop(PeerPid);
+            false -> ok
+        end
+    end.
 
 manual_start_stop(_Config) ->
     LocalNode = node(),

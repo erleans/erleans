@@ -16,14 +16,26 @@
 
 -module(erleans_stateless).
 
--export([pick_grain/2]).
+-export([pick_grain/2, pick_grain/3]).
 
 -include("erleans.hrl").
 
 -define(STATELESS_WAIT, 1000).
 
 -spec pick_grain(erleans:grain_ref(), function()) -> {ok, term()} | {error, timeout}.
-pick_grain(GrainRef = #{placement := {stateless, N}}, Fun) ->
+pick_grain(GrainRef, Fun) ->
+    pick_grain(GrainRef, Fun, ?STATELESS_WAIT).
+
+-spec pick_grain(erleans:grain_ref(), function(), non_neg_integer() | infinity) ->
+    {ok, term()} | {error, timeout}.
+pick_grain(GrainRef, Fun, Timeout) ->
+    Wait = case Timeout of
+               infinity -> ?STATELESS_WAIT;
+               _ -> min(Timeout, ?STATELESS_WAIT)
+           end,
+    pick_grain_(GrainRef, Fun, erlang:monotonic_time(millisecond) + Wait).
+
+pick_grain_(GrainRef = #{placement := {stateless, N}}, Fun, Deadline) ->
     try gproc_pool:claim(?pool(GrainRef), Fun, nowait) of
         {true, Res} ->
             {ok, Res};
@@ -34,9 +46,9 @@ pick_grain(GrainRef = #{placement := {stateless, N}}, Fun) ->
                     %% fewer grains activated than the max allowed
                     %% so create a new one
                     {ok, _Pid} = erleans_grain_sup:start_child(node(), GrainRef),
-                    claim_with_wait(GrainRef, Fun);
+                    claim_with_wait(GrainRef, Fun, Deadline);
                 _ ->
-                    claim_with_wait(GrainRef, Fun)
+                    claim_with_wait(GrainRef, Fun, Deadline)
             end
     catch
         error:badarg ->
@@ -50,11 +62,12 @@ pick_grain(GrainRef = #{placement := {stateless, N}}, Fun) ->
             %% TODO: revisit burst support
             %% spawn a new activation and use it
             {ok, _Pid} = erleans_grain_sup:start_child(node(), GrainRef),
-            claim_with_wait(GrainRef, Fun)
+            claim_with_wait(GrainRef, Fun, Deadline)
     end.
 
-claim_with_wait(GrainRef, Fun) ->
-    case gproc_pool:claim(?pool(GrainRef), Fun, {busy_wait, ?STATELESS_WAIT}) of
+claim_with_wait(GrainRef, Fun, Deadline) ->
+    Wait = max(0, Deadline - erlang:monotonic_time(millisecond)),
+    case gproc_pool:claim(?pool(GrainRef), Fun, {busy_wait, Wait}) of
         {true, Res} ->
             {ok, Res};
         false ->

@@ -224,18 +224,17 @@ callback_crash_does_not_save(_Config) ->
               ?assertMatch({ok, #{deactivated_counter := 0}, _}, Saved),
               {ok, _} = test_grain:call_counter(Grain),
               Pid = erleans_grain_registry:whereis_name(Grain),
-              Monitor = monitor(process, Pid),
               case Kind of
                   call ->
-                      ?assertExit({{callback_crash, _}, _}, erleans_grain:call(Grain, crash));
+                      ?assertError(callback_crash, erleans_grain:call(Grain, crash));
                   cast ->
                       erleans_grain:cast(Grain, crash);
                   info ->
                       Pid ! crash
               end,
-              receive {'DOWN', Monitor, process, Pid, {callback_crash, _}} -> ok
-              after 1000 -> ct:fail(grain_did_not_crash)
-              end,
+              %% Also acts as a mailbox barrier after cast/info failures.
+              ?assertEqual({ok, 2}, test_grain:call_counter(Grain)),
+              ?assertEqual(Pid, erleans_grain_registry:whereis_name(Grain)),
               ?assertEqual(Saved, Provider:read(test_grain, Name, Id))
       end, [call, cast, info]).
 
