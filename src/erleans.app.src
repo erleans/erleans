@@ -7,14 +7,10 @@
    [kernel,
     stdlib,
     sasl,
-    uuid,
-    gproc,
-    opentelemetry_api
+    gproc
    ]},
   {modules, []},
-  {env, [{deactivate_after, 2700000}, %% 45 minutes
-         {refresh_interval, 5000},
-         {num_partitions, 128}]},
+  {env, [{deactivate_after, 2700000}]}, %% 45 minutes
 
   {licenses, ["Apache 2"]},
   {links, [{"GitHub", "https://github.com/erleans/erleans"}]}

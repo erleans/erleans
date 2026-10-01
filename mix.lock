@@ -14,13 +14,10 @@
   "makeup": {:hex, :makeup, "1.0.0", "671df94cf5a594b739ce03b0d0316aa64312cee2574b6a44becb83cd90fb05dc", [:mix], [{:nimble_parsec, "~> 0.5.0", [hex: :nimble_parsec, repo: "hexpm", optional: false]}], "hexpm"},
   "makeup_elixir": {:hex, :makeup_elixir, "0.14.0", "cf8b7c66ad1cff4c14679698d532f0b5d45a3968ffbcbfd590339cb57742f1ae", [:mix], [{:makeup, "~> 1.0", [hex: :makeup, repo: "hexpm", optional: false]}], "hexpm"},
   "nimble_parsec": {:hex, :nimble_parsec, "0.5.3", "def21c10a9ed70ce22754fdeea0810dafd53c2db3219a0cd54cf5526377af1c6", [:mix], [], "hexpm"},
-  "opentelemetry_api": {:git, "https://github.com/open-telemetry/opentelemetry-erlang-api.git", "48da6489cc45d59a42a7d9c68616144c10b36e3b", []},
   "partisan": {:hex, :partisan, "3.0.0", "960877c00e72203ca23023971c1d8de835ac050148381814832ab334268d9616", [:rebar3], [{:acceptor_pool, "1.0.0-rc.0", [hex: :acceptor_pool, repo: "hexpm", optional: false]}, {:lager, "~> 3.5", [hex: :lager, repo: "hexpm", optional: false]}, {:rand_compat, "~>0.0.3", [hex: :rand_compat, repo: "hexpm", optional: false]}, {:time_compat, "~>0.0.1", [hex: :time_compat, repo: "hexpm", optional: false]}, {:types, "~> 0.1", [hex: :types, repo: "hexpm", optional: false]}, {:uuid, "~>1.7.3", [hex: :uuid_erl, repo: "hexpm", optional: false]}], "hexpm"},
   "plumtree": {:hex, :plumtree, "0.5.0", "f3521ce631ad22ac00635e79c7f046a163bd1135889cdc1d0b18ab577f76ec70", [:rebar3], [{:lager, "~>3.5", [hex: :lager, repo: "hexpm", optional: false]}, {:lasp_support, "~>0.0", [hex: :lasp_support, repo: "hexpm", optional: false]}, {:partisan, "~>1.2", [hex: :partisan, repo: "hexpm", optional: false]}, {:rand_compat, "~>0.0.3", [hex: :rand_compat, repo: "hexpm", optional: false]}, {:time_compat, "~>0.0.1", [hex: :time_compat, repo: "hexpm", optional: false]}], "hexpm"},
-  "quickrand": {:hex, :quickrand, "1.8.0", "e47ce597ff067385ff5836c8c7706ac7f8aa7b47dd90c6417e05b64696f872fa", [:rebar3], [], "hexpm"},
   "rand_compat": {:hex, :rand_compat, "0.0.3", "011646bc1f0b0c432fe101b816f25b9bbb74a085713cee1dafd2d62e9415ead3", [:rebar3], [], "hexpm"},
   "sbroker": {:hex, :sbroker, "1.0.0", "28ff1b5e58887c5098539f236307b36fe1d3edaa2acff9d6a3d17c2dcafebbd0", [:rebar3], [], "hexpm"},
   "time_compat": {:hex, :time_compat, "0.0.1", "23fe0ad1fdf3b5b88821b2d04b4b5e865bf587ae66056d671fe0f53514ed8139", [:rebar3], [], "hexpm"},
   "types": {:hex, :types, "0.1.8", "5782b67231e8c174fe2835395e71e669fe0121076779d2a09f1c0d58ee0e2f13", [:rebar3], [], "hexpm"},
-  "uuid": {:hex, :uuid_erl, "1.8.0", "280014f8ff57fce36ee6e91c3ecf21cbfce78aae9854c09597bb4c11e27b66d6", [:rebar3], [{:quickrand, "~> 1.8.0", [hex: :quickrand, repo: "hexpm", optional: false]}], "hexpm"},
 }

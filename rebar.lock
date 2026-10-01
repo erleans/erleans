@@ -1,22 +1,11 @@
 {"1.2.0",
-[{<<"eqwalizer_support">>,
-  {git_subdir,"https://github.com/whatsapp/eqwalizer.git",
-              {ref,"c4c54bcdc958fcd630bf048f09feb9de858bede5"},
-              "eqwalizer_support"},
-  0},
- {<<"gproc">>,{pkg,<<"gproc">>,<<"1.0.0">>},0},
- {<<"opentelemetry_api">>,{pkg,<<"opentelemetry_api">>,<<"1.4.0">>},0},
- {<<"quickrand">>,{pkg,<<"quickrand">>,<<"2.0.7">>},1},
- {<<"uuid">>,{pkg,<<"uuid_erl">>,<<"2.0.7">>},0}]}.
+[{<<"gen_cluster">>,{pkg,<<"gen_cluster">>,<<"0.3.0">>},0},
+ {<<"gproc">>,{pkg,<<"gproc">>,<<"1.0.0">>},0}]}.
 [
 {pkg_hash,[
- {<<"gproc">>, <<"AA9EC57F6C9FF065B16D96924168D7C7157CD1FD457680EFE4B1274F456FA500">>},
- {<<"opentelemetry_api">>, <<"63CA1742F92F00059298F478048DFB826F4B20D49534493D6919A0DB39B6DB04">>},
- {<<"quickrand">>, <<"D2BD76676A446E6A058D678444B7FDA1387B813710D1AF6D6E29BB92186C8820">>},
- {<<"uuid">>, <<"B2078D2CC814F53AFA52D36C91E08962C7E7373585C623F4C0EA6DFB04B2AF94">>}]},
+ {<<"gen_cluster">>, <<"F93CA5521D6C07E023212F26C22FE39C3790BB26D7EC875E3C196D5B632626D1">>},
+ {<<"gproc">>, <<"AA9EC57F6C9FF065B16D96924168D7C7157CD1FD457680EFE4B1274F456FA500">>}]},
 {pkg_hash_ext,[
- {<<"gproc">>, <<"109F253C2787DE8A371A51179D4973230CBEC6239EE673FA12216A5CE7E4F902">>},
- {<<"opentelemetry_api">>, <<"3DFBBFAA2C2ED3121C5C483162836C4F9027DEF469C41578AF5EF32589FCFC58">>},
- {<<"quickrand">>, <<"B8ACBF89A224BC217C3070CA8BEBC6EB236DBE7F9767993B274084EA044D35F0">>},
- {<<"uuid">>, <<"4E4C5CA3461DC47C5E157ED42AA3981A053B7A186792AF972A27B14A9489324E">>}]}
+ {<<"gen_cluster">>, <<"B7C143D2BBA36473A6BBCBA225BB09F9A81FA2FB8619DAB7EEA5CB69CE41DDAB">>},
+ {<<"gproc">>, <<"109F253C2787DE8A371A51179D4973230CBEC6239EE673FA12216A5CE7E4F902">>}]}
 ].

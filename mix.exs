@@ -17,7 +17,7 @@ defmodule Erleans.MixProject do
     [
       extra_applications: [:logger],
       mod: {:erleans_app, []},
-      env: [deactivate_after: 2700000, refresh_interval: 5000, num_partitions: 128]
+      env: [deactivate_after: 2700000]
     ]
   end
 
@@ -26,10 +26,8 @@ defmodule Erleans.MixProject do
     [
       {:gproc, "~> 0.8.0"},
       {:sbroker, "~> 1.0.0"},
-      {:opentelemetry_api, "~>1.4.0"},
       {:erlware_commons, "~> 1.3.1"},
       {:types, "~> 0.1.8", override: true},
-      {:uuid, "~> 1.8", hex: :uuid_erl, override: true},
       {:ex_doc, "~> 0.21", only: :dev, runtime: false},
     ]
   end
