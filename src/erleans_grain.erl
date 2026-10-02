@@ -119,18 +119,9 @@ depending on incoming requests and configuration.
 
 -export_type([opts/0, callback_result/0]).
 
--spec start_link(GrainRef :: erleans:grain_ref()) -> {ok, pid() | undefined} | {error, term()}.
+-spec start_link(GrainRef :: erleans:grain_ref()) -> {ok, pid()} | {error, term()}.
 start_link(GrainRef) ->
-    case proc_lib:start_link(?MODULE, init, [self(), GrainRef]) of
-        {ok, Pid} when is_pid(Pid) ->
-            {ok, Pid};
-        {ok, undefined} ->
-            {ok, undefined};
-        {error, Reason} ->
-            {error, Reason};
-        ignore ->
-            {error, notfound}
-    end.
+    proc_lib:start_link(?MODULE, init, [self(), GrainRef]).
 
 -spec call(GrainRef :: erleans:grain_ref() | pid(), Request :: term()) -> Reply :: term().
 call(GrainRef, Request) ->
@@ -228,10 +219,6 @@ route(GrainRef, Fun, _Deadline) ->
         undefined ->
             ?LOG_INFO("start=~p", [GrainRef]),
             case activate_grain(GrainRef) of
-                {ok, undefined} ->
-                    %% The only way the Pid could be undefined is an ignore
-                    %% from the statem for {error, notfound}.
-                    exit({noproc, notfound});
                 {ok, Pid} ->
                     Fun(noname, Pid);
                 {error, {already_started, Pid}} ->
@@ -290,6 +277,11 @@ init(Parent, GrainRef) ->
 
 init_(Parent, GrainRef=#{id := Id,
                          implementing_module := CbModule}) ->
+    maybe_add_worker(GrainRef),
+    %% Registration is complete. Release the supervisor before storage I/O or
+    %% user callbacks; requests queue until initialization enters the loop.
+    proc_lib:init_ack(Parent, {ok, self()}),
+
     {CbData, ETag} = case maps:find(provider, GrainRef) of
                           {ok, Provider={ProviderModule, ProviderName}} ->
                               case ProviderModule:read(CbModule, ProviderName, Id) of
@@ -308,25 +300,20 @@ init_(Parent, GrainRef=#{id := Id,
                              new_state(CbModule, Id)
                       end,
 
-    maybe_add_worker(GrainRef),
-
     case CbData of
         notfound ->
-            proc_lib:init_ack(Parent, ignore);
+            exit(notfound);
         _ ->
             case erleans_utils:fun_or_default(CbModule, activate, 2, [GrainRef, CbData], {ok, CbData, #{}}) of
                 {ok, CbData1, GrainOpts} ->
                     %% A first activation reserves the row with the initial
                     %% state, not the mutations returned by activate/2.
                     ETag1 = maybe_insert_initial_state(CbModule, Id, Provider, ETag, CbData),
-                    enter_loop(Parent, GrainRef, CbModule, Id, Provider, ETag1, GrainOpts, CbData1);
-                {error, notfound} ->
-                    %% activate returning {error, notfound} is given special treatment and
-                    %% results in an ignore from the statem and an `exit({noproc, notfound})`
-                    %% from `erleans_grain`
-                    proc_lib:init_ack(Parent, ignore);
+                    enter_loop(GrainRef, CbModule, Id, Provider, ETag1, GrainOpts, CbData1);
                 {error, Reason} ->
-                    proc_lib:init_ack(Parent, {error, Reason})
+                    %% In particular, notfound must not look like a retryable
+                    %% normal/shutdown exit to callers waiting for activation.
+                    exit(Reason)
             end
     end.
 
@@ -338,7 +325,7 @@ new_state(CbModule, Id) ->
             {#{}, undefined}
     end.
 
-enter_loop(Parent, GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData) ->
+enter_loop(GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData) ->
     CreateTime = maps:get(create_time, GrainOpts, erlang:system_time(seconds)),
     DeactivateAfter = deactivate_after(GrainOpts),
     Data = #data{cb_module        = CbModule,
@@ -354,7 +341,6 @@ enter_loop(Parent, GrainRef, CbModule, Id, Provider, ETag, GrainOpts, CbData) ->
                                         _ -> DeactivateAfter
                                     end
                 },
-    proc_lib:init_ack(Parent, {ok, self()}),
     gen_statem:enter_loop(?MODULE, [], active, Data).
 
 callback_mode() ->

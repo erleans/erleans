@@ -26,6 +26,13 @@ selects one owner and stops the loser with `{shutdown, duplicate_activation}`.
 The loser skips `deactivate/1` and state saving and does not unregister the winner.
 Pending calls through grain references can then re-route to the surviving owner.
 
+Grain startup acknowledges the supervisor as soon as registration completes
+(including pool registration for stateless grains). Storage reads and `activate/2`
+then run concurrently across grains, with requests queued until activation finishes.
+An activation returning `{error, notfound}`, or initial state of `notfound`, exits
+with reason `notfound`; waiting calls exit with `{notfound, {gen_statem, call, _}}`
+without retrying.
+
 Exceptions raised by `handle_call/3` are returned to the calling process and
 re-raised with their original class, reason, and callback stacktrace. The
 activation keeps its last successfully returned state and continues processing
@@ -279,4 +286,3 @@ $ rebar3 ct
 $ MIX_ENV=test mix deps.get
 $ mix test
 ```
-

@@ -208,11 +208,9 @@ request_types(_Config) ->
     ok.
 
 exit_notfound(_Config) ->
-    %% activate returning {error, notfound} is given special treatment and
-    %% results in an ignore from the statem and an `exit({noproc, notfound})`
-    %% from `erleans_grain`
+    %% A missing activation exits with a non-retryable reason.
     GrainRef = erleans:get_grain(notfound_grain, <<"notfound-grain-1">>),
-    ?assertExit({noproc, notfound}, notfound_grain:anything(GrainRef)).
+    ?assertExit({notfound, {gen_statem, call, _}}, notfound_grain:anything(GrainRef)).
 
 callback_crash_does_not_save(_Config) ->
     lists:foreach(

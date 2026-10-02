@@ -98,14 +98,16 @@ activation_insert_conflict(_) ->
     Tag = make_ref(),
     Id = etag_test_grain:test_key({pause, self(), Tag}),
     Grain = grain(Id),
-    {Caller, Monitor} = spawn_monitor(fun() -> erleans_grain:call(Grain, get) end),
+    {Caller, Monitor} = spawn_monitor(fun() ->
+        ?assertEqual({exit, saved_etag_changed}, erleans_grain:call(Grain, get))
+    end),
     Activation = receive {Tag, activating, Pid} -> Pid
                  after 1000 -> ct:fail(activation_not_started)
                  end,
     Winner = #{value => winner},
     {ok, <<"version:1">>} = opaque_etag_provider:insert(etag_test_grain, ?store, Id, Winner),
     Activation ! {Tag, resume},
-    receive {'DOWN', Monitor, process, Caller, {noproc, bad_etag}} -> ok
+    receive {'DOWN', Monitor, process, Caller, normal} -> ok
     after 1000 -> ct:fail(activation_did_not_reject_conflict)
     end,
     ?assertEqual({ok, Winner, <<"version:1">>}, read(Id)).
@@ -152,15 +154,15 @@ pending_calls_on_conflict(_) ->
     end, [bare, detailed]).
 
 storage_failures(_) ->
-    ?assertExit({noproc, read_failed}, erleans_grain:call(grain(<<"read_failure">>), get)),
-    ?assertExit({noproc, insert_failed}, erleans_grain:call(grain(<<"insert_failure">>), get)),
+    ?assertExit({read_failed, {gen_statem, call, _}}, erleans_grain:call(grain(<<"read_failure">>), get)),
+    ?assertExit({insert_failed, {gen_statem, call, _}}, erleans_grain:call(grain(<<"insert_failure">>), get)),
     ?assertEqual({error, not_found}, ?provider:read(etag_test_grain, ?store, <<"read_failure">>)),
     ?assertEqual({error, not_found}, ?provider:read(etag_test_grain, ?store, <<"insert_failure">>)),
     Existing = #{value => existing},
     {ok, 1} = ?provider:insert(etag_test_grain, ?store, <<"read_failure">>, Existing),
-    ?assertExit({noproc, read_failed}, erleans_grain:call(grain(<<"read_failure">>), get)),
+    ?assertExit({read_failed, {gen_statem, call, _}}, erleans_grain:call(grain(<<"read_failure">>), get)),
     ?assertEqual({ok, Existing, 1}, ?provider:read(etag_test_grain, ?store, <<"read_failure">>)),
-    ?assertExit({noproc, activation_failed}, erleans_grain:call(grain(<<"activation_failure">>), get)),
+    ?assertExit({activation_failed, {gen_statem, call, _}}, erleans_grain:call(grain(<<"activation_failure">>), get)),
     ?assertEqual({error, not_found}, ?provider:read(etag_test_grain, ?store, <<"activation_failure">>)),
     Grain = grain(<<"write_failure">>),
     ?assertEqual(a, erleans_grain:call(Grain, get)),
