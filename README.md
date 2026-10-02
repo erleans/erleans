@@ -15,7 +15,7 @@ Erleans is a framework for building distributed applications in Erlang and Elixi
 
 Stateful grains are backed by persistent storage and referenced by a primary key set by the grain. An activation of a grain is a single Erlang process in on an Erlang node (silo) in an Erlang cluster. Activation placement is handled by Erleans and communication is over standard Erlang distribution. If a grain is sent a message and does not have a current activation one is spawned.
 
-Grain state is persisted through a storage provider which owns its change id or ETag. The grain treats the ETag as an opaque token and passes it back on each save. Providers must atomically reject stale ETags and return a new token on every successful write, even when the state is unchanged. If another activation has changed the ETag, the activation attempting to save state will stop. The built-in ETS provider uses an always increasing integer version per row, starting at 1.
+Grain state is persisted through a storage provider which owns its change id or ETag. The grain treats the ETag as an opaque token and passes it back on each save. Providers must atomically reject stale ETags and return a new token on every successful write, even when the state is unchanged. If another activation has changed the ETag, the activation attempting to save state exits with `saved_etag_changed` unless a save continuation reloads its state. The built-in ETS provider uses an always increasing integer version per row, starting at 1.
 
 Activations are registered through
 [global](https://www.erlang.org/doc/apps/kernel/global.html) by default.
@@ -39,8 +39,9 @@ activation keeps its last successfully returned state and continues processing
 queued requests. Exceptions in `handle_cast/2` and `handle_info/2` are logged and
 also leave the activation running. These exceptions do not invoke deactivation
 or automatically save state; external side effects performed before the exception
-are not rolled back. Activation failures, invalid callback results, and errors
-while executing actions such as `save_state` remain fatal.
+are not rolled back. Activation failures, invalid callback results, and unhandled
+action errors remain fatal. A `save_state` continuation can handle a provider's
+error result and explicitly reload after a conflict, as described below.
 
 Calls through grain references re-resolve the activation after transport exits
 caused by normal termination, `noproc`, `shutdown`, `{shutdown, _}`,
@@ -161,6 +162,71 @@ activations, until a `save_state` action or a `{save_state, State}` result from
 `deactivate/1` persists them. Failed activation does not insert a row.
 
 [Streams](https://github.com/erleans/erleans_streams) have a provider type as well for providing a pluggable stream layer.
+
+### Save continuations and conflict recovery
+
+Return `save_state` to persist the state returned by the callback. Return
+`{save_state, Fun}` to handle the result in the grain process before another
+message is processed. The function receives `ok` or `{error, Reason}`; provider
+conflicts (`bad_etag` and `{bad_etag, Expected, Stored}`) become
+`{error, saved_etag_changed}`.
+
+```erlang
+handle_call({set, Value}, From, State) ->
+    NewState = State#{value => Value},
+    OnSave = fun
+        (ok) ->
+            {continue, [{reply, From, ok}]};
+        ({error, saved_etag_changed}) ->
+            {reload, fun(CurrentState) ->
+                {continue, [{reply, From, {error, {conflict, CurrentState}}}]}
+            end};
+        ({error, Reason}) ->
+            {stop, [{reply, From, {error, {save_failed, Reason}}}]}
+    end,
+    {ok, NewState, [{save_state, OnSave}]}.
+```
+
+The continuation returns one of:
+
+* `{continue, Actions}` after a successful write. The returned state and new
+  ETag are adopted. Actions can be `reply`, `cast`, or `info` actions.
+* `{stop, Replies}` to reply and terminate without calling `deactivate/1` or
+  saving again. Only reply actions are accepted. The exit reason is
+  `saved_etag_changed` for a conflict, `{save_failed, Reason}` for another write
+  error, or `{save_stopped, ok}` after a successful write or reload.
+* `{reload, ReloadFun}` after a conflict. Erleans reads the current persistent
+  state and ETag, then calls `ReloadFun(CurrentState)`. That function returns
+  `{continue, Actions}` or `{stop, Replies}`. Continuing keeps the same activation
+  alive; its next save uses the newly read ETag.
+
+Reload discards the rejected persistent state and any earlier unsaved persistent
+changes. For `{Ephemeral, Persistent}` state, it preserves the ephemeral state
+from **before the failed callback** and replaces only the persistent part.
+`activate/2` is not called again. The rejected operation is not automatically
+retried. An explicit `deactivate` callback result still requests deactivation
+after recovery; use `ok` as in the example to keep the activation active.
+
+Each callback result may contain at most one save action. Other actions in the
+same list run only on write success, even if they appear before the save. On
+success with `continue`, continuation actions run at the save action's position;
+on failure, all sibling actions are discarded. A `stop` result executes only its
+returned replies. Continuations return actions, not another state, and cannot
+return additional save actions.
+
+A bare `save_state` conflict terminates the process with `saved_etag_changed`.
+Waiting `erleans_grain:call` callers retain the `{exit, saved_etag_changed}`
+result. Other provider errors can be handled with `{stop, Replies}`; continuing
+without a successful reload is disallowed. Reload is limited to conflicts:
+an arbitrary storage error, such as a timeout, does not establish whether a
+write committed and is not safely resolved by simply reading once.
+
+A failed reload (including a missing row) terminates with
+`{state_reload_failed, Reason}`. Exceptions in either continuation are fatal
+and do not trigger save-on-deactivation or automatic request replay. A successful
+write remains committed if its continuation fails. These hooks are not durable:
+the process can fail between the write and the continuation. Use a persisted
+outbox when a follow-up effect must survive process failure.
 
 ## Differences from gen_server
 

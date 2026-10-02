@@ -146,7 +146,7 @@ pending_calls_on_conflict(_) ->
              after 1000 -> ct:fail(caller_failed)
              end
          end || {Caller, M} <- [SaveCaller | Readers]],
-        receive {'DOWN', Monitor, process, Pid, _} -> ok
+        receive {'DOWN', Monitor, process, Pid, saved_etag_changed} -> ok
         after 1000 -> ct:fail(stale_activation_survived)
         end,
         ?assertEqual(undefined, erleans_grain_registry:whereis_name(Grain)),

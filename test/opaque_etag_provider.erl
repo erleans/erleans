@@ -14,6 +14,13 @@ all(Type, Name) ->
 
 read(_, _, <<"read_failure">>) -> {error, read_failed};
 read(Type, Name, Id) ->
+    case etag_test_grain:test_control(Id) of
+        {read_error, Reason} -> {error, Reason};
+        {read_exit, Reason} -> exit(Reason);
+        _ -> read_state(Type, Name, Id)
+    end.
+
+read_state(Type, Name, Id) ->
     case erleans_provider_ets:read(Type, Name, Id) of
         {ok, State, Version} -> {ok, State, encode(Version)};
         Error -> Error
@@ -33,6 +40,7 @@ insert(Type, Name, Id, Hash, State) ->
 update(_, _, <<"write_failure">>, _, _) -> {error, write_failed};
 update(Type, Name, Id, State, ETag) ->
     case {etag_test_grain:test_control(Id), State} of
+        {{write_error, Reason}, _} -> {error, Reason};
         {{conflict, Shape, Test, Tag}, _} ->
             Test ! {Tag, saving, self()},
             receive {Tag, finish_save} -> ok end,

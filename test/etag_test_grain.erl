@@ -1,9 +1,10 @@
 -module(etag_test_grain).
 -behaviour(erleans_grain).
 
--export([test_key/1, test_control/1, clear_test_keys/0]).
+-export([test_key/1, test_control/1, set_test_control/2, clear_test_keys/0]).
 
--export([placement/0, state/1, activate/2, handle_call/3, handle_cast/2, deactivate/1]).
+-export([placement/0, state/1, activate/2, handle_call/3, handle_cast/2,
+         handle_info/2, deactivate/1]).
 
 placement() -> prefer_local.
 state(<<"activation_mutations:", _/binary>>) -> #{value => a, activations => 0};
@@ -32,10 +33,14 @@ test_key(Control) ->
 
 test_control(Id) -> persistent_term:get({?MODULE, Id}, undefined).
 
+set_test_control(Id, Control) -> persistent_term:put({?MODULE, Id}, Control).
+
 clear_test_keys() ->
     [persistent_term:erase(Key) || {Key = {?MODULE, _}, _} <- persistent_term:get()],
     ok.
 
+handle_call({actions, Candidate, MakeActions}, From, _State) ->
+    {ok, Candidate, MakeActions(From)};
 handle_call({deactivate, Test, Tag, Kind}, From, State) ->
     {deactivate, {{Test, Tag, Kind}, State}, [{reply, From, ok}]};
 handle_call({pending_on, Node, Test, Tag}, From, State) ->
@@ -55,7 +60,11 @@ handle_call(save, From, State) ->
 handle_call({set, Value}, From, State) ->
     {ok, State#{value => Value}, [save_state, {reply, From, ok}]}.
 
+handle_cast({actions, Candidate, Actions}, _State) -> {ok, Candidate, Actions};
 handle_cast(_, State) -> {ok, State}.
+
+handle_info({actions, Candidate, Actions}, _State) -> {ok, Candidate, Actions};
+handle_info(_, State) -> {ok, State}.
 deactivate({{Test, Tag, Kind}, State}) ->
     Test ! {Tag, deactivating, self()},
     receive {Tag, finish_deactivate} -> ok end,

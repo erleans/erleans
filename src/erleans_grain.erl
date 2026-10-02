@@ -58,10 +58,14 @@ depending on incoming requests and configuration.
 
 -type from() :: {pid(), term()}.
 
--type action() :: {reply, From :: from(), Reply :: term()} |
-                  {cast, Msg :: term()} |
-                  {info, Msg :: term()} |
-                  save_state.
+-type reply_action() :: {reply, From :: from(), Reply :: term()}.
+-type effect_action() :: reply_action() | {cast, Msg :: term()} | {info, Msg :: term()}.
+-type save_result() :: ok | {error, Reason :: term()}.
+-type continuation_result() :: {continue, [effect_action()]} | {stop, [reply_action()]}.
+-type save_continuation_result() :: continuation_result() |
+                                    {reload, fun((cb_state()) -> continuation_result())}.
+-type action() :: effect_action() | save_state |
+                  {save_state, fun((save_result()) -> save_continuation_result())}.
 
 -callback provider() -> module().
 
@@ -117,7 +121,8 @@ depending on incoming requests and configuration.
                   deactivate_after => deactivate_after()
                  }.
 
--export_type([opts/0, callback_result/0]).
+-export_type([opts/0, callback_result/0, action/0, save_result/0,
+              continuation_result/0, save_continuation_result/0]).
 
 -spec start_link(GrainRef :: erleans:grain_ref()) -> {ok, pid()} | {error, term()}.
 start_link(GrainRef) ->
@@ -138,10 +143,11 @@ call(GrainRef, Request, Timeout) ->
                            gen_statem:call(Pid, {ReqType, CallId, Request}, remaining_timeout(Deadline))
                        catch
                            exit:{Reason, {gen_statem, call, _}}
-                             when Reason =:= bad_etag;
+                             when Reason =:= saved_etag_changed;
+                                  Reason =:= bad_etag;
                                   is_tuple(Reason), tuple_size(Reason) =:= 3,
                                   element(1, Reason) =:= bad_etag ->
-                               ?LOG_ERROR("at=grain_exit reason=bad_etag", []),
+                               ?LOG_ERROR("at=grain_exit reason=saved_etag_changed", []),
                                {exit, saved_etag_changed}
                        end
                end, Deadline, ?ROUTING_RETRIES),
@@ -519,30 +525,128 @@ finalize_and_stop(Data=#data{cb_module=CbModule,
 handle_result({ok, NewCbData}, Data=#data{ref=_GrainRef}, Actions) ->
     {keep_state, Data#data{cb_state=NewCbData}, Actions};
 handle_result({ok, NewCbData, CbActions}, Data=#data{ref=_GrainRef}, Actions) ->
-    {Actions1, Data1} = handle_actions(CbActions, Actions, NewCbData, Data),
-    {keep_state, Data1#data{cb_state=NewCbData}, Actions1};
+    handle_result_actions(keep_state, CbActions, Actions, NewCbData, Data);
 handle_result({deactivate, NewCbData}, Data, _) ->
     {next_state, deactivating, Data#data{cb_state=NewCbData}, []};
 handle_result({deactivate, NewCbData, CbActions}, Data, _) ->
-    {Actions1, Data1} = handle_actions(CbActions, [], NewCbData, Data),
-    {next_state, deactivating, Data1#data{cb_state=NewCbData}, Actions1}.
+    handle_result_actions(deactivate, CbActions, [], NewCbData, Data).
 
-%% Drops unrecognized actions and converts cast actions to next_events that
-%% do not reset the activation timer
-handle_actions([], ActionsAcc, _CbData, Data) ->
-    {lists:reverse(ActionsAcc), Data};
-handle_actions([{cast, Msg} | Rest], ActionsAcc, CbData, Data) ->
-    handle_actions(Rest, [{next_event, cast, {leave_timer, Msg}} | ActionsAcc], CbData, Data);
-handle_actions([{info, Msg} | Rest], ActionsAcc, CbData, Data) ->
-    handle_actions(Rest, [{next_event, info, {leave_timer, Msg}} | ActionsAcc], CbData, Data);
-handle_actions([R={reply, _, _} | Rest], ActionsAcc, CbData, Data) ->
-    handle_actions(Rest, [R | ActionsAcc], CbData, Data);
-handle_actions([save_state | Rest], ActionsAcc, CbData, Data) ->
-    NewETag = update_state(CbData, Data),
-    handle_actions(Rest, ActionsAcc, CbData, Data#data{etag=NewETag});
-handle_actions([A | _Rest], _ActionsAcc, _CbData, _Data) ->
-    %% unknown action, exit with reason bad_action
-    exit({bad_action, A}).
+handle_result_actions(Transition, CbActions, Actions, NewCbData, Data) ->
+    %% Validate the complete list before writing. All sibling effects are
+    %% success-only, including replies that appear before the save action.
+    {Before, Save, After} = split_save(CbActions, [], none),
+    Candidate = Data#data{cb_state=NewCbData},
+    Result = case Save of
+                 none -> {continue, Candidate, Before};
+                 save_state ->
+                     ETag = update_state(NewCbData, Data),
+                     {continue, Candidate#data{etag=ETag}, Before ++ After};
+                 {save_state, Fun} ->
+                     save_with_continuation(Fun, Before, After, Candidate, Data)
+             end,
+    case Result of
+        {continue, Data1, Effects} ->
+            case Transition of
+                keep_state -> {keep_state, Data1, Actions ++ Effects};
+                deactivate -> {next_state, deactivating, Data1, Actions ++ Effects}
+            end;
+        {stop, Reason, Data1, Replies} ->
+            {stop_and_reply, Reason, Replies, Data1}
+    end.
+
+split_save([], Before, none) ->
+    {lists:reverse(Before), none, []};
+split_save([], After, {Save, Before}) ->
+    {Before, Save, lists:reverse(After)};
+split_save([Save | Rest], Acc, Seen)
+  when Save =:= save_state;
+       is_tuple(Save), tuple_size(Save) =:= 2,
+       element(1, Save) =:= save_state, is_function(element(2, Save), 1) ->
+    case Seen of
+        none -> split_save(Rest, [], {Save, lists:reverse(Acc)});
+        _ -> exit({bad_action, multiple_save_state})
+    end;
+split_save([Action | Rest], Acc, Seen) ->
+    split_save(Rest, [effect_action(Action) | Acc], Seen).
+
+effect_action({cast, Msg}) -> {next_event, cast, {leave_timer, Msg}};
+effect_action({info, Msg}) -> {next_event, info, {leave_timer, Msg}};
+effect_action(Reply={reply, _, _}) -> Reply;
+effect_action(Action) -> exit({bad_action, Action}).
+
+save_with_continuation(Fun, Before, After, Candidate, Previous) ->
+    case write_state(Candidate#data.cb_state, Previous) of
+        {ok, ETag} ->
+            Data = Candidate#data{etag=ETag},
+            case finish_continuation(invoke_continuation(Fun, ok), ok, Data) of
+                {continue, Data1, Effects} ->
+                    {continue, Data1, Before ++ Effects ++ After};
+                Stop -> Stop
+            end;
+        {error, Reason} ->
+            Result = {error, save_error(Reason)},
+            case invoke_continuation(Fun, Result) of
+                {reload, ReloadFun} when element(2, Result) =:= saved_etag_changed,
+                                       is_function(ReloadFun, 1) ->
+                    Data = reload_state(Previous),
+                    finish_continuation(invoke_continuation(ReloadFun, Data#data.cb_state),
+                                        ok, Data);
+                Continuation ->
+                    finish_continuation(Continuation, Result, Previous)
+            end
+    end.
+
+%% A failed continuation is fatal even if it exits with shutdown: neither
+%% deactivation saving nor transport retries may replay this operation.
+invoke_continuation(Fun, Arg) ->
+    try Fun(Arg)
+    catch Class:Reason:Stacktrace ->
+        exit({save_continuation_failed, Class, Reason, Stacktrace})
+    end.
+
+finish_continuation({continue, Actions}, ok, Data) ->
+    {continue, Data, [effect_action(A) || A <- Actions]};
+finish_continuation({stop, Actions}, Result, Data) ->
+    Replies = [case A of
+                   {reply, _, _} -> A;
+                   _ -> exit({bad_action, A})
+               end || A <- Actions],
+    Reason = case Result of
+                 {error, saved_etag_changed} -> saved_etag_changed;
+                 {error, Error} -> {save_failed, Error};
+                 ok -> {save_stopped, ok}
+             end,
+    {stop, Reason, Data, Replies};
+finish_continuation(Result, Outcome, _Data) ->
+    exit({bad_save_continuation_result, Outcome, Result}).
+
+reload_state(Data=#data{provider={Provider, Name}, cb_module=Module, id=Id,
+                       cb_state=Previous}) ->
+    Read = try Provider:read(Module, Name, Id)
+           catch Class:Reason:Stacktrace ->
+               exit({state_reload_failed, Class, Reason, Stacktrace})
+           end,
+    case Read of
+        {ok, Persistent, ETag} ->
+            CbState = case Previous of
+                          {Ephemeral, _} -> {Ephemeral, Persistent};
+                          _ -> Persistent
+                      end,
+            Data#data{cb_state=CbState, etag=ETag};
+        {error, Error} -> exit({state_reload_failed, Error})
+    end.
+
+save_error(bad_etag) -> saved_etag_changed;
+save_error({bad_etag, _, _}) -> saved_etag_changed;
+save_error(Reason) -> Reason.
+
+write_state({_Ephemeral, Persistent}, Data) ->
+    write_state(Persistent, Data);
+write_state(_CbData, #data{provider=undefined}) ->
+    exit(?NO_PROVIDER_ERROR);
+write_state(CbData, #data{id=Id, cb_module=Module,
+                        provider={Provider, Name}, etag=ETag}) ->
+    Provider:update(Module, Name, Id, CbData, ETag).
 
 update_state({_Ephemeral, Persistent}, Data) ->
     update_state(Persistent, Data);
@@ -559,7 +663,7 @@ update_state(CbModule, {Provider, ProviderName}, Id, Data, ETag) ->
         {ok, NewETag} ->
             NewETag;
         {error, Reason} ->
-            exit(Reason)
+            exit(save_error(Reason))
     end.
 
 maybe_insert_initial_state(CbModule, Id, {Provider, ProviderName}, undefined, {_, CbData}) ->
@@ -574,7 +678,7 @@ insert_state(CbModule, Provider, ProviderName, Id, CbData) ->
         {ok, ETag} ->
             ETag;
         {error, Reason} ->
-            exit(Reason)
+            exit(save_error(Reason))
     end.
 
 -spec deactivate_after(erleans_grain:opts()) -> deactivate_after().

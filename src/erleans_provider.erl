@@ -22,7 +22,9 @@
 %% write returns a fresh token even when the payload has not changed. undefined
 %% is reserved for a missing row and must not be returned as a stored ETag.
 %% Conflicts may use bad_etag or {bad_etag, ExpectedETag, StoredETag} as the
-%% error reason. Calls waiting on a failed save receive {exit, saved_etag_changed}.
+%% error reason. Grains normalize these to saved_etag_changed. A save continuation
+%% may reload after a conflict; otherwise the activation exits with that reason
+%% and waiting calls receive {exit, saved_etag_changed}.
 -type write_result() :: {ok, erleans:etag()} | {error, term()}.
 
 -callback start_link(ProviderName :: atom(), Args :: list()) -> {ok, pid()}.
